@@ -14,23 +14,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
 using System.Reflection;
+using System.Diagnostics;
+using static replay.GameUiPatch;
+using UnityEngine.UI;
 
 
 namespace replay
 {
-
-    // in early load,
-    // edit the escape menu
-    // add settings
-    // also manage world management like on world load, world unload
-    // also create a new scene for the replay
-
-    // also get when the game is paused or not
-    // create a new ui menu not builder menu to save the replays
-    // change the builder ui to a button in the main menu
-
-
-
     public class Main : Mod
     {
         public override string ModNameID => "replayMod";
@@ -47,39 +37,70 @@ namespace replay
             Debug.Log("Replay Mod patches applied in Early_Load");
         }
 
-        public override void Load()
-        {
-            UiPatches.Initialize();
-        }
-    }    [HarmonyPatch(typeof(MenuGenerator), "OpenMenu")]
-    public static class MenuGeneratorOpenMenuPatch
-    {
-        [HarmonyPrefix]
-        public static void PrefixOpenMenu(ref MenuElement[] elements)
-        {
-            // Create a new list with existing elements plus our recording button
-            List<MenuElement> elementsList = new List<MenuElement>(elements);
-            
-            // Create the recording button
-            var recordButton = ButtonBuilder.CreateButton(null, () => "Start Recording", () =>
-            {
-                Debug.Log("Start Recording button clicked");
-                // Add your recording start logic here
-            }, CloseMode.None);
+    }
 
-            // Add the recording button to the elements list
-            elementsList.Add(recordButton);
-            
-            // Update the elements array to include our button
-            elements = elementsList.ToArray();
-            
-            Debug.Log($"Recording button added to menu elements array. Total elements: {elements.Length}");
+
+    [HarmonyPatch(typeof(MenuGenerator), "OpenMenu")]
+    public static class MenuGeneratorPatch
+    {   // Edit the MenuGenerator becuse its easier them modigfying the GameManager directly
+        // check that the function is being called from GameManager
+
+        public static bool IsCalledFromGameManager()
+        {   // includes a little extra dynamic check to see if the function is being called from GameManager
+            // This checks the stack trace to see if the OpenMenu method is being called from GameManager
+            var stackTrace = new StackTrace();
+            for (int i = 0; i < stackTrace.FrameCount; i++)
+            {
+                var method = stackTrace.GetFrame(i).GetMethod();
+                var name = method?.Name ?? "";
+                var declaringType = method?.DeclaringType?.FullName ?? "";
+
+                if ((declaringType == "SFS.World.GameManager" && name == "OpenMenu")
+                    || name.Contains("DMD<SFS.World.GameManager::OpenMenu>"))
+                    return true;
+            }
+            return false;
+        }
+
+
+        [HarmonyPrefix]
+        public static void Prefix(ref MenuElement[] elements)
+        {
+            try
+            {   // we use this to check if the function is being called from GameManager and if it exists
+                bool isFromGameManager = IsCalledFromGameManager();                if (isFromGameManager && elements != null)
+                {
+                    Debug.Log($"Adding recording button");
+                    var recordButton = ButtonBuilder.CreateButton(null, () => GameUiPatch.GetRecordingButtonText(), () =>
+                    {
+                        Debug.Log("Recording button clicked");
+                        ToggleRecording();
+                    }, CloseMode.None);
+
+
+
+                    // Add the button to the elements array
+                    List<MenuElement> elementsList = new List<MenuElement>(elements)
+                    {   recordButton    };
+                    elements = elementsList.ToArray();
+
+                    Debug.Log($"Recording button added. Total elements now: {elements.Length}");
+                }
+                else if (isFromGameManager)
+                    Debug.Log("GameManager detected but elements array is null or empty");
+                else
+                    Debug.Log("Not called from GameManager - skipping button addition");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Error in MenuGeneratorPatch: {ex.Message}");
+                Debug.LogError($"Stack trace: {ex.StackTrace}");
+            }
         }
     }
 
     public static class Settings
     {
-        // public static string extend = Path.Combine(Application.persistentDataPath, "SFS_Saves");
         public static string RecordingsFolderPath = SavingFolder.Extend("/Recordings");
 
         public static void EnsureRecordingsFolderExists()
@@ -92,13 +113,6 @@ namespace replay
         }
 
         private static FolderPath SavingFolder
-        {
-            get
-            {
-                return FileLocations.BaseFolder.Extend((Application.isMobilePlatform || Application.isEditor) ? "Saving" : "/../Saving");
-            }
-        }
+        { get { return FileLocations.BaseFolder.Extend((Application.isMobilePlatform || Application.isEditor) ? "Saving" : "/../Saving"); }}
     }
-
-
 }
