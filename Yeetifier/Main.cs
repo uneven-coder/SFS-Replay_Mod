@@ -3,6 +3,7 @@ using HarmonyLib;
 using ModLoader;
 using ModLoader.Helpers;
 using SFS.UI;
+using SFS.Translations;
 using SFS.World;
 using SFS.Utilities;
 using UnityEngine;
@@ -10,6 +11,11 @@ using System.IO;
 using SFS.IO;
 using SFS.Input;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection.Emit;
+using System.Reflection;
+
+
 namespace replay
 {
 
@@ -45,6 +51,30 @@ namespace replay
         {
             UiPatches.Initialize();
         }
+    }    [HarmonyPatch(typeof(MenuGenerator), "OpenMenu")]
+    public static class MenuGeneratorOpenMenuPatch
+    {
+        [HarmonyPrefix]
+        public static void PrefixOpenMenu(ref MenuElement[] elements)
+        {
+            // Create a new list with existing elements plus our recording button
+            List<MenuElement> elementsList = new List<MenuElement>(elements);
+            
+            // Create the recording button
+            var recordButton = ButtonBuilder.CreateButton(null, () => "Start Recording", () =>
+            {
+                Debug.Log("Start Recording button clicked");
+                // Add your recording start logic here
+            }, CloseMode.None);
+
+            // Add the recording button to the elements list
+            elementsList.Add(recordButton);
+            
+            // Update the elements array to include our button
+            elements = elementsList.ToArray();
+            
+            Debug.Log($"Recording button added to menu elements array. Total elements: {elements.Length}");
+        }
     }
 
     public static class Settings
@@ -67,85 +97,6 @@ namespace replay
             {
                 return FileLocations.BaseFolder.Extend((Application.isMobilePlatform || Application.isEditor) ? "Saving" : "/../Saving");
             }
-        }
-    }
-
-
-
-    [HarmonyPatch(typeof(GameManager), "Start")]
-    public class GameManagerReplayListenerPatch
-    {
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Called via Harmony reflection")]
-        private static void Postfix()
-        {
-            GameManager.AddOnKeyDown(KeybindingsPC.keys.Close_Menu, GameManager.main.OpenMenu);
-        }
-    }
-
-    [HarmonyPatch(typeof(MenuGenerator), "OpenMenu")]
-    public static class MenuGenerator_OpenMenu_Listener
-    {
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Called via Harmony reflection")]
-        static void Postfix(ref MenuElement[] elements)
-        {
-            Debug.Log("Menu opened, adding Replay button dynamically.");
-
-            // Get size syncer (fallback in case needed)
-            new SizeSyncerBuilder(out var sizeSync).HorizontalMode(SizeMode.MaxChildSize);
-
-            // Create the "Start Recording" button
-            MenuElement recordButton = ButtonBuilder.CreateIconButton(
-                sizeSync,
-                ResourcesLoader.main.buttonIcons.cheats,
-                () => "Start Recording",
-                new Action(OpenReplayUI),
-                CloseMode.None
-            );
-
-            if (recordButton == null)
-            {
-                Debug.LogError("Failed to create Start Recording button.");
-                return;
-            }
-
-            // Insert the new button at the beginning of the array
-            List<MenuElement> newList = new List<MenuElement>(elements);
-            newList.Insert(0, recordButton);
-            elements = newList.ToArray();
-
-                        GameObject menuHolder = MenuGenerator.OpenMenu();
-            if (menuHolder != null)
-            {
-                RectTransform rectTransform = menuHolder.GetComponent<RectTransform>();
-                if (rectTransform != null)
-                {
-                    rectTransform.sizeDelta = new Vector2(800, 600); // Example size adjustment
-                    Debug.Log("Menu size adjusted to 800x600.");
-                }
-            }
-        }
-
-        public static void OpenReplayUI()
-        {
-            Debug.Log("Opening Replay UI");
-            List<MenuElement> replayUIElements = new List<MenuElement>();
-            new SizeSyncerBuilder(out var sizeSync).HorizontalMode(SizeMode.MaxChildSize);
-
-            MenuElement replayUIHeader = ButtonBuilder.CreateButton(
-                sizeSync,
-                () => "Replay UI Header",
-                null,
-                CloseMode.None
-            );
-
-            if (replayUIHeader == null)
-            {
-                Debug.LogError("Failed to create Replay UI Header.");
-                return;
-            }
-
-            replayUIElements.Add(replayUIHeader);
-            MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, replayUIElements.ToArray());
         }
     }
 
