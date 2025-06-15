@@ -105,7 +105,7 @@ namespace replay
         public static void ToggleRecording()
         {
             if (!CurrentRecordingState.IsRecording)
-            {
+            {   // start recording
                 CurrentRecordingState.IsRecording = true;
                 CurrentRecordingState.RecordingName = "Recording_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 CurrentRecordingState.StartTime = DateTime.Now;
@@ -123,12 +123,14 @@ namespace replay
                 {
                     Debug.LogError($"Error closing menu: {ex.Message}");
                 }
+                RecordGame.StartRecording();
             }
             else
             {
                 CurrentRecordingState.IsRecording = false;
                 CurrentRecordingState.EndTime = DateTime.Now;
                 ShowRecordingEndMenu();
+                RecordGame.StopRecording();
             }
         }
 
@@ -137,9 +139,9 @@ namespace replay
 
 
     }
-    
 
-        [HarmonyPatch(typeof(MenuGenerator), "OpenMenu")]
+
+    [HarmonyPatch(typeof(MenuGenerator), "OpenMenu")]
     public static class MenuGeneratorPatch
     {   // Edit the MenuGenerator becuse its easier them modigfying the GameManager directly
         // check that the function is being called from GameManager
