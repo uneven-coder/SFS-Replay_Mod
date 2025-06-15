@@ -9,8 +9,11 @@ using SFS.Input;
 using System;
 using SFS.Parsers.Json;
 using Newtonsoft.Json;
+using ModLoader.Helpers;
 using SFS;
-
+using SFS.WorldBase;
+using SFS.World;
+using UnityEngine.SceneManagement;
 
 namespace replay
 {
@@ -145,7 +148,7 @@ namespace replay
     public static class Settings
     {
         private static FilePath SettingsFilePath => new FolderPath(Main.Instance.ModFolder).ExtendToFile("replaymod-settings.json");
-        public static string RecordingsFolderPath = SavingFolder.Extend("/Recordings");
+        public static FolderPath RecordingsFolderPath = SavingFolder.Extend("/Recordings");
         
         public static ReplaySettings CurrentSettings { get; private set; } = new ReplaySettings();
 

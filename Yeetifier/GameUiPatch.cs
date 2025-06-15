@@ -8,39 +8,22 @@ using SFS.Translations;
 using SFS.Input;
 using System.Diagnostics;
 using static replay.GameUiPatch;
-
+using static replay.RecordGame;
 
 namespace replay
 {
-    public class RecordingState
-    {
-        public bool IsRecording { get; set; }
-        public string RecordingName { get; set; }
-        public DateTime StartTime { get; set; }
-        public DateTime EndTime { get; set; }
-        public List<string> RecordedEvents { get; set; }
-
-        public RecordingState()
-        {
-            IsRecording = false;
-            RecordingName = string.Empty;
-            StartTime = DateTime.MinValue;
-            EndTime = DateTime.MinValue;
-        }
-    }
 
 
 
 
     public static class GameUiPatch
     {
-        public static RecordingState CurrentRecordingState { get; private set; } = new RecordingState();
-        private static readonly int windowID = Builder.GetRandomID();
 
 
 
         private static void ShowRecordingEndMenu()
         {
+            StopRecording();
             CurrentRecordingState.IsRecording = false;
             CurrentRecordingState.EndTime = DateTime.Now;
 
@@ -86,16 +69,17 @@ namespace replay
                 CurrentRecordingState.RecordingName = CurrentRecordingState.RecordingName;
                 Debug.Log($"Recording saved: {CurrentRecordingState.RecordingName}");
                 Debug.Log($"Duration: {duration:hh\\:mm\\:ss}");
-                // TODO: Implement actual save functionality
-                CurrentRecordingState = new RecordingState(); // Reset after saving
+                SaveRecording();
+                    UpdateRecordingState(new RecordingState());
             }, CloseMode.Current));
+
 
             {   // Other options
                 endMenuElements.Add(ButtonBuilder.CreateButton(null, () => "Discard Recording", () =>
                 {
                     Debug.Log("Recording discarded");
                     // Reset recording state without saving
-                    CurrentRecordingState = new RecordingState();
+                    UpdateRecordingState(new RecordingState());
                 }, CloseMode.Current));
             }
 
