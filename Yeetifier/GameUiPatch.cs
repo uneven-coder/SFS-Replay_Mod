@@ -1,16 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using HarmonyLib;
-using SFS.Builds;
 using SFS.UI;
 using SFS.UI.ModGUI;
-using SFS.World;
-using SFS.WorldBase;
-using static SFS.Base;
 using UnityEngine;
 using SFS.Translations;
-using UITools;
 using SFS.Input;
+using System.Diagnostics;
+using static replay.GameUiPatch;
 
 
 namespace replay
@@ -31,6 +28,10 @@ namespace replay
             EndTime = DateTime.MinValue;
         }
     }
+
+
+
+
     public static class GameUiPatch
     {
         public static RecordingState CurrentRecordingState { get; private set; } = new RecordingState();
@@ -57,15 +58,15 @@ namespace replay
                 endMenuElements.Add(ButtonBuilder.CreateButton(null, () => CurrentRecordingState.RecordingName, () =>
                 {
                     string selectedName = CurrentRecordingState.RecordingName;
-                    Menu.textInput.Open(Loc.main.Cancel, Loc.main.Rename, delegate(string[] input)
+                    Menu.textInput.Open(Loc.main.Cancel, Loc.main.Rename, delegate (string[] input)
                     {
                         CurrentRecordingState.RecordingName = input[0];
                         Debug.Log($"Recording renamed to: {input[0]}");
-                        
+
                         // Refresh the menu to show the updated name
                         ScreenManager.main.CloseCurrent();
                         ShowRecordingEndMenu();
-                        
+
                     }, CloseMode.Current, new TextInputElement[]
                     {
                         TextInputMenu.Element(string.Empty, selectedName)
@@ -77,7 +78,7 @@ namespace replay
                 endMenuElements.Add(ElementGenerator.VerticalSpace(10));
             }
 
-        
+
             // Skip adding TextInput directly since it's not a MenuElement
             endMenuElements.Add(ElementGenerator.VerticalSpace(30));            // Save button
             endMenuElements.Add(ButtonBuilder.CreateButton(null, () => "Save Recording", () =>
@@ -133,6 +134,69 @@ namespace replay
 
         public static string GetRecordingButtonText() =>
             CurrentRecordingState.IsRecording ? "Stop Recording" : "Start Recording";
+
+
+    }
+    
+
+        [HarmonyPatch(typeof(MenuGenerator), "OpenMenu")]
+    public static class MenuGeneratorPatch
+    {   // Edit the MenuGenerator becuse its easier them modigfying the GameManager directly
+        // check that the function is being called from GameManager
+
+        public static bool IsCalledFromGameManager()
+        {   // includes a little extra dynamic check to see if the function is being called from GameManager
+            // This checks the stack trace to see if the OpenMenu method is being called from GameManager
+            var stackTrace = new StackTrace();
+            for (int i = 0; i < stackTrace.FrameCount; i++)
+            {
+                var method = stackTrace.GetFrame(i).GetMethod();
+                var name = method?.Name ?? "";
+                var declaringType = method?.DeclaringType?.FullName ?? "";
+
+                if ((declaringType == "SFS.World.GameManager" && name == "OpenMenu")
+                    || name.Contains("DMD<SFS.World.GameManager::OpenMenu>"))
+                    return true;
+            }
+            return false;
+        }
+
+
+        [HarmonyPrefix]
+        public static void Prefix(ref MenuElement[] elements)
+        {
+            try
+            {   // we use this to check if the function is being called from GameManager and if it exists
+                bool isFromGameManager = IsCalledFromGameManager();
+                if (isFromGameManager && elements != null)
+                {
+                    Debug.Log($"Adding recording button");
+                    var recordButton = ButtonBuilder.CreateButton(null, () => GameUiPatch.GetRecordingButtonText(), () =>
+                    {
+                        Debug.Log("Recording button clicked");
+                        ToggleRecording();
+                    }, CloseMode.None);
+
+
+
+                    // Add the button to the elements array
+                    List<MenuElement> elementsList = new List<MenuElement>(elements)
+                    {   recordButton    };
+                    elements = elementsList.ToArray();
+
+                    Debug.Log($"Recording button added. Total elements now: {elements.Length}");
+                }
+                else if (isFromGameManager)
+                    Debug.Log("GameManager detected but elements array is null or empty");
+                else
+                    Debug.Log("Not called from GameManager - skipping button addition");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Error in MenuGeneratorPatch: {ex.Message}");
+                Debug.LogError($"Stack trace: {ex.StackTrace}");
+            }
+        }
 
 
     }

@@ -1,28 +1,23 @@
-﻿using System;
-using HarmonyLib;
+﻿using HarmonyLib;
 using ModLoader;
-using ModLoader.Helpers;
-using SFS.UI;
-using SFS.Translations;
-using SFS.World;
-using SFS.Utilities;
 using UnityEngine;
 using System.IO;
 using SFS.IO;
-using SFS.Input;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection.Emit;
-using System.Reflection;
-using System.Diagnostics;
-using static replay.GameUiPatch;
-using UnityEngine.UI;
+using SFS.UI;
+using SFS.Input;
+using System;
+using SFS.Parsers.Json;
+using Newtonsoft.Json;
+using SFS;
 
 
 namespace replay
 {
     public class Main : Mod
     {
+        public static Main Instance { get; private set; }
+        
         public override string ModNameID => "replayMod";
         public override string DisplayName => "Replay Mod";
         public override string Author => "Cratior";
@@ -32,76 +27,127 @@ namespace replay
 
         public override void Early_Load()
         {
+            Instance = this;
             new Harmony(ModNameID).PatchAll();
             Settings.EnsureRecordingsFolderExists();
+            Settings.LoadSettings();
             Debug.Log("Replay Mod patches applied in Early_Load");
         }
 
-    }
-
-
-    [HarmonyPatch(typeof(MenuGenerator), "OpenMenu")]
-    public static class MenuGeneratorPatch
-    {   // Edit the MenuGenerator becuse its easier them modigfying the GameManager directly
-        // check that the function is being called from GameManager
-
-        public static bool IsCalledFromGameManager()
-        {   // includes a little extra dynamic check to see if the function is being called from GameManager
-            // This checks the stack trace to see if the OpenMenu method is being called from GameManager
-            var stackTrace = new StackTrace();
-            for (int i = 0; i < stackTrace.FrameCount; i++)
-            {
-                var method = stackTrace.GetFrame(i).GetMethod();
-                var name = method?.Name ?? "";
-                var declaringType = method?.DeclaringType?.FullName ?? "";
-
-                if ((declaringType == "SFS.World.GameManager" && name == "OpenMenu")
-                    || name.Contains("DMD<SFS.World.GameManager::OpenMenu>"))
-                    return true;
-            }
-            return false;
-        }
-
-
-        [HarmonyPrefix]
-        public static void Prefix(ref MenuElement[] elements)
+        public override void Load()
         {
-            try
-            {   // we use this to check if the function is being called from GameManager and if it exists
-                bool isFromGameManager = IsCalledFromGameManager();                if (isFromGameManager && elements != null)
-                {
-                    Debug.Log($"Adding recording button");
-                    var recordButton = ButtonBuilder.CreateButton(null, () => GameUiPatch.GetRecordingButtonText(), () =>
-                    {
-                        Debug.Log("Recording button clicked");
-                        ToggleRecording();
-                    }, CloseMode.None);
+            HomeManagerAlert();
+            Settings.LoadSettings();
+        }
 
+        public static void HomeManagerAlert()
+        {
+            // Check if user has already seen the info menu
+            if (Settings.CurrentSettings.HasSeenInfoMenu)
+                return;
 
-
-                    // Add the button to the elements array
-                    List<MenuElement> elementsList = new List<MenuElement>(elements)
-                    {   recordButton    };
-                    elements = elementsList.ToArray();
-
-                    Debug.Log($"Recording button added. Total elements now: {elements.Length}");
-                }
-                else if (isFromGameManager)
-                    Debug.Log("GameManager detected but elements array is null or empty");
-                else
-                    Debug.Log("Not called from GameManager - skipping button addition");
-            }
-            catch (System.Exception ex)
+            List<string> alertMessages = new List<string>
             {
-                Debug.LogError($"Error in MenuGeneratorPatch: {ex.Message}");
-                Debug.LogError($"Stack trace: {ex.StackTrace}");
+                "<color=yellow>Welcome to the Replay Mod!</color>",
+                "<color=red>Some Warnings</color>",
+                "This mod is in <color=orange>beta</color> and may cause issues.",
+                "- Do not delete solar systems",
+                "       they are required to replay recordings.",
+                "- large file sizes",
+                "- Save loss is unlikely",
+                "Press Escape to close this message."
+            };
+
+            List<MenuElement> alertElements = new List<MenuElement>
+            {
+                TextBuilder.CreateText(() => "Replay Mod Alert"),
+                ElementGenerator.VerticalSpace(12)
+            };
+
+            foreach (var message in alertMessages)
+            {
+                alertElements.Add(TextBuilder.CreateText(() => message));
+            }
+
+            Func<Screen_Base> menuScreen = MenuGenerator.CreateMenu(CancelButton.Close, SFS.Input.CloseMode.Current, null, null, alertElements.ToArray());
+            ScreenManager.main.OpenScreen(menuScreen);
+
+            // Mark that user has seen the info menu and save settings
+            Settings.CurrentSettings.HasSeenInfoMenu = true;
+            Settings.SaveSettings();
+
+            // Apply left alignment and resize only warning messages (indices 2-5 in alertMessages)
+            TextAdapter[] textAdapters = UnityEngine.Object.FindObjectsOfType<TextAdapter>();
+            List<RectTransform> warningRectTransforms = new List<RectTransform>();
+            int warningStartIndex = 1;
+            int warningEndIndex = 5;
+
+            for (int i = 0; i < textAdapters.Length && i < alertElements.Count; i++)
+            {
+                // Check if this corresponds to a warning message
+                if (i >= warningStartIndex && i <= warningEndIndex)
+                {
+                    var textAdapter = textAdapters[i];
+
+                    // Collect RectTransform for resizing
+                    RectTransform[] children = textAdapter.GetComponentsInChildren<RectTransform>();
+                    warningRectTransforms.AddRange(children);
+
+                    // Set text alignment to left through underlying Text component
+                    var textComponent = textAdapter.GetComponentInChildren<UnityEngine.UI.Text>();
+                    if (textComponent != null)
+                    {
+                        textComponent.alignment = TextAnchor.MiddleLeft;
+                    }
+
+                    // Also handle TextMeshPro components using reflection
+                    var tmpComponent = textAdapter.GetComponent("TextMeshProUGUI");
+                    if (tmpComponent != null)
+                    {
+                        var alignmentProperty = tmpComponent.GetType().GetProperty("alignment");
+                        if (alignmentProperty != null)
+                        {
+                            var alignmentType = alignmentProperty.PropertyType;
+                            var midlineLeftValue = System.Enum.Parse(alignmentType, "MidlineLeft");
+                            alignmentProperty.SetValue(tmpComponent, midlineLeftValue);
+                        }
+                    }
+                }
+            }
+
+            // Resize warning message elements to fit content
+            if (warningRectTransforms.Count > 0)
+            {
+                Vector2 largestSize = Vector2.zero;
+
+                // Find the largest size among warning element rect transforms
+                foreach (var rt in warningRectTransforms)
+                {
+                    if (rt.sizeDelta.x > largestSize.x)
+                        largestSize.x = rt.sizeDelta.x;
+                    if (rt.sizeDelta.y > largestSize.y)
+                        largestSize.y = rt.sizeDelta.y;
+                }
+
+                // Apply the largest size to warning element rect transforms
+                foreach (var rt in warningRectTransforms)
+                {
+                    rt.sizeDelta = largestSize - new Vector2(40, 0); // Keep height as is, only adjust width
+                }
+
+                Debug.Log($"Resized {warningRectTransforms.Count} warning message RectTransform components to size: {largestSize}");
             }
         }
+
     }
+
 
     public static class Settings
     {
+        private static FilePath SettingsFilePath => new FolderPath(Main.Instance.ModFolder).ExtendToFile("replaymod-settings.json");
         public static string RecordingsFolderPath = SavingFolder.Extend("/Recordings");
+        
+        public static ReplaySettings CurrentSettings { get; private set; } = new ReplaySettings();
 
         public static void EnsureRecordingsFolderExists()
         {
@@ -112,7 +158,32 @@ namespace replay
             }
         }
 
+        public static void LoadSettings()
+        {
+            if (JsonWrapper.TryLoadJson<ReplaySettings>(SettingsFilePath, out ReplaySettings loadedSettings))
+            {
+                CurrentSettings = loadedSettings;
+            }
+            else
+            {
+                CurrentSettings = new ReplaySettings();
+                SaveSettings();
+            }
+        }
+        public static void SaveSettings()
+        {
+            JsonWrapper.SaveAsJson(SettingsFilePath, CurrentSettings, true);
+        }
+
         private static FolderPath SavingFolder
-        { get { return FileLocations.BaseFolder.Extend((Application.isMobilePlatform || Application.isEditor) ? "Saving" : "/../Saving"); }}
+        {
+            get { return FileLocations.BaseFolder.Extend((Application.isMobilePlatform || Application.isEditor) ? "Saving" : "/../Saving"); }
+        }
+    }
+
+    public class ReplaySettings
+    {
+        [JsonProperty("hasSeenInfoMenu")]
+        public bool HasSeenInfoMenu { get; set; } = false;
     }
 }
