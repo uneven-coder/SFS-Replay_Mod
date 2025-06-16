@@ -14,12 +14,8 @@ namespace replay
 {
 
 
-
-
     public static class GameUiPatch
     {
-
-
 
         private static void ShowRecordingEndMenu()
         {
@@ -94,20 +90,21 @@ namespace replay
                 CurrentRecordingState.RecordingName = "Recording_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 CurrentRecordingState.StartTime = DateTime.Now;
                 CurrentRecordingState.EndTime = DateTime.MinValue;
-                CurrentRecordingState.RecordedEvents = new List<string>();
+                // CurrentRecordingState.RecordedEvents = new List<string>();
                 Debug.Log($"Started recording: {CurrentRecordingState.RecordingName}");
+
                 try
                 {
                     if (ScreenManager.main != null)
-                    {
                         ScreenManager.main.CloseCurrent();
-                    }
                 }
                 catch (Exception ex)
                 {
                     Debug.LogError($"Error closing menu: {ex.Message}");
                 }
+                
                 RecordGame.StartRecording();
+
             }
             else
             {
@@ -157,17 +154,14 @@ namespace replay
                 if (isFromGameManager && elements != null)
                 {
                     Debug.Log($"Adding recording button");
-                    var recordButton = ButtonBuilder.CreateButton(null, () => GameUiPatch.GetRecordingButtonText(), () =>
-                    {
+                    var recordButton = ButtonBuilder.CreateButton(null, () => GameUiPatch.GetRecordingButtonText(), () => {
                         Debug.Log("Recording button clicked");
                         ToggleRecording();
                     }, CloseMode.None);
 
-
-
                     // Add the button to the elements array
                     List<MenuElement> elementsList = new List<MenuElement>(elements)
-                    {   recordButton    };
+                        {   recordButton    };
                     elements = elementsList.ToArray();
 
                     Debug.Log($"Recording button added. Total elements now: {elements.Length}");
@@ -183,7 +177,5 @@ namespace replay
                 Debug.LogError($"Stack trace: {ex.StackTrace}");
             }
         }
-
-
     }
 }

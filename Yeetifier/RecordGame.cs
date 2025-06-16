@@ -22,7 +22,7 @@ namespace replay
         public string RecordingName { get; set; }
         public DateTime StartTime { get; set; }
         public DateTime EndTime { get; set; }
-        public List<string> RecordedEvents { get; set; }
+        // public List<string> RecordedEvents { get; set; }
         public SolarSystemReference SolarSystem { get; set; }
 
         public RecordingState()
@@ -32,17 +32,30 @@ namespace replay
             SessionId = string.Empty;
             StartTime = DateTime.MinValue;
             EndTime = DateTime.MinValue;
-            RecordedEvents = new List<string>();
+            // RecordedEvents = new List<string>();
             SolarSystem = null;
             // Don't reset SolarSystemName - it should only be updated when a new world loads
         }
     }
 
-    
     public static class heiarchy
     {
-        public static Dictionary<Rocket, HashSet<Planet>> PlanetsAndRockets = new Dictionary<Rocket, HashSet<Planet>>();
-        
+        public static Dictionary<Planet, List<Rocket>> PlanetsAndRockets = new Dictionary<Planet, List<Rocket>>();
+
+        public static void AddRocketToPlanet(Planet planet, Rocket rocket)
+        {
+            if (planet == null || rocket == null) return;
+
+            if (!PlanetsAndRockets.ContainsKey(planet))
+            {
+                PlanetsAndRockets[planet] = new List<Rocket>();
+            }
+
+            if (!PlanetsAndRockets[planet].Contains(rocket))
+            {
+                PlanetsAndRockets[planet].Add(rocket);
+            }
+        }
 
     }
 
@@ -68,10 +81,24 @@ namespace replay
         public static RecordingState CurrentRecordingState { get; private set; } = new RecordingState();
         private static FolderPath _CurrentRecordingFolder;
 
-
         public static void StartRecording()
         {
             Debug.Log(Base.worldBase.settings.solarSystem.name);
+            heiarchy.PlanetsAndRockets.Clear();
+            foreach (var planet in Base.planetLoader.planets.Values)
+            {
+                heiarchy.PlanetsAndRockets[planet] = new List<Rocket>();
+            }
+
+            // Log the hierarchy
+            string hierarchyLog = "Hierarchy:\n";
+            foreach (var kvp in heiarchy.PlanetsAndRockets)
+            {
+                string planetName = kvp.Key?.codeName ?? "Unknown Planet";
+                int rocketCount = kvp.Value.Count;
+                hierarchyLog += $"Planet: {planetName} -> Rockets: {rocketCount}\n";
+            }
+            Debug.Log(hierarchyLog);
 
             // Immediately try to record any existing rockets while paused
             try

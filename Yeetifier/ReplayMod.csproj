@@ -72,7 +72,6 @@
     <Compile Include="Main.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="GameUiPatch.cs" />
-    <!-- <Compile Include="GizmoRenderer.cs" /> -->
     <Compile Include="MainMenuPatch.cs" />
     <Compile Include="RecordGame.cs" />
   </ItemGroup>
