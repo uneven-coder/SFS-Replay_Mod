@@ -124,10 +124,13 @@ This project is licensed under the MIT License - see the [https://choosealicense
 - **Issues**: [GitHub Issues](https://github.com/cratior/SFS-Replay_Mod/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/cratior/SFS-Replay_Mod/discussions)
 
-(@cratior to contact me)
 - **Discord**: [SFS Server](https://discord.gg/hwfWm2d)
 - **Discord**: [FSI SFS Server](https://discord.gg/P4Z2M652g6)
+
+(@cratior to contact me)
+
 This is a mod moderators/admins cannot help you with mod specific issues.
+
 ---
 
 **Encouraged by FSI**
