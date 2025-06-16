@@ -85,7 +85,7 @@ namespace replay
         {
             Debug.Log(Base.worldBase.settings.solarSystem.name);
             heiarchy.PlanetsAndRockets.Clear();
-            foreach (var planet in Base.planetLoader.planets.Values)
+            foreach (Planet planet in Base.planetLoader.planets.Values)
             {
                 heiarchy.PlanetsAndRockets[planet] = new List<Rocket>();
             }
@@ -98,7 +98,7 @@ namespace replay
                 int rocketCount = kvp.Value.Count;
                 hierarchyLog += $"Planet: {planetName} -> Rockets: {rocketCount}\n";
             }
-            Debug.Log(hierarchyLog);
+
 
             // Immediately try to record any existing rockets while paused
             try
@@ -106,24 +106,31 @@ namespace replay
                 // Pause the world to safely capture initial state
                 FreezeOrResumeTime(true);
 
-                CurrentRecordingState.SolarSystem = Base.worldBase.settings.solarSystem;
-
-
-
-                // Debug.Log($"Creating recording folders at: {_recordingBasePath}");
+                CurrentRecordingState.SolarSystem = Base.worldBase.settings.solarSystem;                // Debug.Log($"Creating recording folders at: {_recordingBasePath}");
                 // Directory.CreateDirectory(_recordingBasePath);
                 // Directory.CreateDirectory(Path.Combine(_recordingBasePath, "Blueprints"));
                 // Directory.CreateDirectory(Path.Combine(_recordingBasePath, "Changes"));
-
-                var rockets = UnityEngine.Object.FindObjectsOfType<Rocket>();
+                
+                Rocket[] rockets = GameManager.main.rockets.ToArray();
                 Debug.Log($"Found {rockets.Length} rockets at recording start");
-                foreach (var rocket in rockets)
+                foreach (Rocket rocket in rockets)
                 {
-                    if (rocket != null && rocket.gameObject.activeInHierarchy)
+                    if (rocket != null)
                     {
                         // RecordRocket(rocket);
+                        heiarchy.AddRocketToPlanet(rocket.location.planet, rocket);
                     }
                 }
+
+                // Update hierarchy log after adding rockets
+                hierarchyLog = "Updated Hierarchy:\n";
+                foreach (var kvp in heiarchy.PlanetsAndRockets)
+                {
+                    string planetName = kvp.Key?.codeName ?? "Unknown Planet";
+                    int rocketCount = kvp.Value.Count;
+                    hierarchyLog += $"Planet: {planetName} -> Rockets: {rocketCount}\n";
+                }
+                Debug.Log(hierarchyLog);
             }
             catch (System.Exception ex)
             {
