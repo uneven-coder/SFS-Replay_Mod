@@ -40,32 +40,24 @@ namespace replay
         public static RecordingState CurrentRecordingState { get; private set; } = new RecordingState();
         private static FolderPath _CurrentRecordingFolder;
 
-          // todo: refactor this to be structured and easier to read
+        // todo: refactor this to be structured and easier to read
         public static void StartRecording()
         {
             try
             {
                 // Validate essential objects before proceeding
-                if (Base.worldBase?.settings?.solarSystem == null)
-                {
-                    Debug.LogError("Cannot start recording: worldBase, settings, or solarSystem is null");
+                string NullRefError =
+                    Base.worldBase?.settings?.solarSystem == null ? "Cannot start recording: worldBase, settings, or solarSystem is null" :
+                    Base.worldBase.settings.solarSystem.name == null || Base.worldBase.settings.solarSystem.name == string.Empty ? "Cannot start recording: worldBase, settings, or solarSystem is null" :
+                    Base.planetLoader?.planets == null ?            "Cannot start recording: planetLoader or planets is null" :
+                    GameManager.main?.rockets == null ?             "Cannot start recording: GameManager.main or rockets is null" :
+                    null;
+                    
+                if (NullRefError != null) {
+                    Debug.LogError(NullRefError);
                     return;
                 }
 
-                if (Base.planetLoader?.planets == null)
-                {
-                    Debug.LogError("Cannot start recording: planetLoader or planets is null");
-                    return;
-                }
-
-                if (GameManager.main?.rockets == null)
-                {
-                    Debug.LogError("Cannot start recording: GameManager.main or rockets is null");
-                    return;
-                }
-
-                Debug.Log($"Starting recording for solar system: {Base.worldBase.settings.solarSystem.name}");
-                
                 // Initialize planet rocket mapping
                 rocketRegistry.PlanetRocketMapping.Clear();
                 foreach (Planet planet in Base.planetLoader.planets.Values)
@@ -95,7 +87,7 @@ namespace replay
                 // Record existing rockets
                 Rocket[] rockets = GameManager.main.rockets.ToArray();
                 Debug.Log($"Found {rockets.Length} rockets at recording start");
-                
+
                 foreach (Rocket rocket in rockets)
                 {
                     if (rocket?.location?.planet?.Value != null)
@@ -236,7 +228,7 @@ namespace replay
 
 namespace replay
 {
-        public class RecordingState
+    public class RecordingState
     {
         public bool IsRecording { get; set; }
         public string SessionId { get; set; }
@@ -261,9 +253,9 @@ namespace replay
 
     public static class rocketRegistry
     {
-        public static Dictionary<Planet, List<Rocket>> PlanetRocketMapping = new Dictionary<Planet, List<Rocket>>();        public static void AddRocketToPlanet(Planet planet, Rocket rocket)
+        public static Dictionary<Planet, List<Rocket>> PlanetRocketMapping = new Dictionary<Planet, List<Rocket>>(); public static void AddRocketToPlanet(Planet planet, Rocket rocket)
         {
-            if (planet == null || rocket == null) 
+            if (planet == null || rocket == null)
             {
                 Debug.LogWarning($"Cannot add rocket to planet: planet={planet != null}, rocket={rocket != null}");
                 return;
@@ -278,7 +270,9 @@ namespace replay
             {
                 PlanetRocketMapping[planet].Add(rocket);
             }
-        }public static string ReturnAsPrint(bool hideEmptyPlanets = false, bool hideEmptyOrbit = true)
+        }
+
+        public static string ReturnAsPrint(bool hideEmptyPlanets = false, bool hideEmptyOrbit = true)
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
             sb.AppendLine("Solar System Hierarchy:");
@@ -291,7 +285,7 @@ namespace replay
             {
                 var planet = rootPlanets[i];
                 bool isLastRootPlanet = (i == rootPlanets.Count - 1);
-                
+
                 AppendPlanetHierarchy(sb, planet, "", isLastRootPlanet, hideEmptyPlanets, hideEmptyOrbit);
             }
 
@@ -302,15 +296,15 @@ namespace replay
         {
             var rockets = PlanetRocketMapping.ContainsKey(planet) ? PlanetRocketMapping[planet] : new List<Rocket>();
             var moons = PlanetRocketMapping.Keys.Where(p => p.parentBody == planet).OrderBy(p => p.codeName).ToList();
-            
+
             // Skip empty planets if hideEmptyPlanets is true
             if (hideEmptyPlanets && rockets.Count == 0 && moons.Count == 0)
-                return;            string planetPrefix = isLastSibling ? "└── " : "├── ";
+                return; string planetPrefix = isLastSibling ? "└── " : "├── ";
             string planetType = planet.parentBody == null ? "* " : "o ";
             sb.AppendLine($"{baseIndent}{planetPrefix}{planetType}{planet.codeName}");
 
             string childIndent = baseIndent + (isLastSibling ? "    " : "│   ");
-            
+
             // Count total children (moons + rocket sections)
             int totalChildren = moons.Count;
             bool hasRocketSections = rockets.Count > 0 || !hideEmptyOrbit;
@@ -347,7 +341,7 @@ namespace replay
                 }
 
                 bool showNotInOrbit = rocketsNotInOrbit.Count > 0 || !hideEmptyOrbit;
-                bool showInOrbit = rocketsInOrbit.Count > 0 || !hideEmptyOrbit;                if (showNotInOrbit)
+                bool showInOrbit = rocketsInOrbit.Count > 0 || !hideEmptyOrbit; if (showNotInOrbit)
                 {
                     bool isLastChild = (currentChildIndex == totalChildren - 1);
                     AppendRocketSection(sb, "^ Not in Orbit", rocketsNotInOrbit, childIndent, isLastChild);
@@ -376,7 +370,8 @@ namespace replay
                 bool isLastRocket = (i == rockets.Count - 1);
                 string rocketPrefix = isLastRocket ? "└── " : "├── ";
                 string rocketName = !string.IsNullOrEmpty(rocket.rocketName) ? rocket.rocketName : $"Rocket_{rocket.GetHashCode()}";
-                sb.AppendLine($"{rocketIndent}{rocketPrefix}{rocketName}");            }
+                sb.AppendLine($"{rocketIndent}{rocketPrefix}{rocketName}");
+            }
         }
     }
 
