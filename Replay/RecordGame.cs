@@ -17,6 +17,7 @@ using Newtonsoft.Json.Serialization;
 using SFS.Navigation;
 using SFS.UI;
 using SFS.World.Maps;
+using static replay.SaveManager;
 
 namespace replay
 {    // Custom contract resolver to exclude derived properties
@@ -62,7 +63,7 @@ namespace replay
     {
 
         public static RecordingState CurrentRecordingState { get; private set; } = new RecordingState();
-        private static FolderPath _CurrentRecordingFolder;
+        internal static FolderPath _CurrentRecordingFolder;
         private static FolderPath _RootRecordingFolder = Settings.RecordingsFolderPath;
 
         // todo: refactor this to be structured and easier to read
@@ -148,7 +149,9 @@ namespace replay
             {
                 FreezeOrResumeTime(false);
             }
-        }        private static void FreezeOrResumeTime(bool FreezeTime)
+        }
+
+        public static void FreezeOrResumeTime(bool FreezeTime)
         {   // realtime physics should be true so stuff like engines arnt turned off
             // this is used to freeze the world so that we can save all data without it changing
             var worldTime = UnityEngine.Object.FindObjectOfType<WorldTime>();
@@ -195,136 +198,22 @@ namespace replay
 
                 Debug.Log("Recording state cleared");
             }
-        }        public static void CreateQuickSave()
-        {   // calling it quick save as its simular to sfs quicksave
-            // it will save all rockets as blueprints/the quick save format except better formated
-            // its more custom but works the same and donsnt really save much of the world
+        }
 
 
-            if (!CurrentRecordingState.IsRecording)
-            {
-                Debug.LogWarning("Cannot create quick save: No active recording session");
-                return;
-            }
-
-            try
-            {
-                // Pause world to safely capture state
-                FreezeOrResumeTime(true);
-
-                // Always use absolute path for current recording folder
-                _CurrentRecordingFolder = new FolderPath(Path.Combine(Settings.RecordingsFolderPath, CurrentRecordingState.RecordingName));
-                
-                // Ensure blueprints folder exists
-                string blueprintsFolder = Path.Combine(_CurrentRecordingFolder, "Blueprints");
-                if (!Directory.Exists(blueprintsFolder))
-                {
-                    Directory.CreateDirectory(blueprintsFolder);
-                }// Get current world state data
-                var worldState = new QuickSaveData
-                {
-                    Timestamp = DateTime.Now,
-                    WorldTime = WorldTime.main.worldTime,
-                    TimewarpIndex = WorldTime.main.timewarpIndex,
-                    PlayerAddress = PlayerController.main.player.Value?.location?.planet?.Value?.codeName ?? "Unknown"
-                };                // Save all rockets as individual blueprint files with unique hash-based naming
-                Rocket[] rockets = GameManager.main.rockets.ToArray();
-                var rocketSaves = new List<RocketSaveData>();
-                var savedRocketHashes = new HashSet<string>();
-
-                foreach (Rocket rocket in rockets)
-                {
-                    if (rocket == null) continue;
-
-                    // Create unique identifier for this rocket based on actual rocket data
-                    string rocketHash = GenerateRocketHash(rocket);
-
-                    // Skip if we've already saved this exact rocket state
-                    if (savedRocketHashes.Contains(rocketHash))
-                    {
-                        Debug.LogWarning($"Skipping duplicate rocket with hash: {rocketHash}");
-                        continue;
-                    }
-                    savedRocketHashes.Add(rocketHash);
-
-                    // Create rocket save data using SFS's RocketSave structure
-                    var rocketSave = new RocketSave(rocket);
-
-                    // Create our custom rocket save data with additional metadata
-                    var rocketSaveData = new RocketSaveData
-                    {
-                        RocketSave = rocketSave,
-                        RocketId = rocketHash,
-                        PlanetName = rocket.location?.planet?.Value?.codeName ?? "Unknown",
-                        IsInOrbit = IsRocketInOrbit(rocket),
-                        SaveTimestamp = DateTime.Now
-                    };
-
-                    rocketSaves.Add(rocketSaveData);
-
-                    // Save individual rocket blueprint file with hash-based name
-                    string rocketName = !string.IsNullOrEmpty(rocketSave.rocketName) ? rocketSave.rocketName : "UnnamedRocket";
-                    string rocketFileName = $"{SanitizeFileName(rocketName)}_{rocketHash}.json";
-                    string rocketFilePath = Path.Combine(blueprintsFolder, rocketFileName);                    // Configure JSON settings to handle circular references and exclude derived properties
-                    var jsonSettings = new JsonSerializerSettings
-                    {
-                        ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                        NullValueHandling = NullValueHandling.Ignore,
-                        Formatting = Formatting.Indented,
-                        DefaultValueHandling = DefaultValueHandling.Ignore,
-                        ContractResolver = new IgnoreDerivedPropertiesContractResolver()
-                    };
-
-                    File.WriteAllText(rocketFilePath, JsonConvert.SerializeObject(rocketSaveData, jsonSettings));
-                }
-
-                // Save master quick save file with world state and rocket references
-                var quickSave = new QuickSave
-                {
-                    WorldState = worldState,
-                    RocketCount = rocketSaves.Count,
-                    RocketFiles = rocketSaves.Select(r =>
-                    {
-                        string rocketName = !string.IsNullOrEmpty(r.RocketSave.rocketName) ? r.RocketSave.rocketName : "UnnamedRocket";
-                        return $"{SanitizeFileName(rocketName)}_{r.RocketId}.json";
-                    }).ToList()
-                }; string quickSaveFilePath = Path.Combine(_CurrentRecordingFolder, $"quicksave_{DateTime.Now:yyyyMMdd_HHmmss}.json");
-
-                // Configure JSON settings for master save file
-                var masterJsonSettings = new JsonSerializerSettings
-                {
-                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                    NullValueHandling = NullValueHandling.Ignore,
-                    Formatting = Formatting.Indented
-                };
-
-                File.WriteAllText(quickSaveFilePath, JsonConvert.SerializeObject(quickSave, masterJsonSettings));
-
-                Debug.Log($"Quick save created successfully with {rocketSaves.Count} rockets");
-                Debug.Log($"Quick save file: {quickSaveFilePath}");
-                Debug.Log($"Rocket blueprints saved to: {blueprintsFolder}");
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"Failed to create quick save: {ex.Message}\nStackTrace: {ex.StackTrace}");
-            }
-            finally
-            {
-                FreezeOrResumeTime(false);
-            }
-        }        private static bool IsRocketInOrbit(Rocket rocket)
+        internal static bool IsRocketInOrbit(Rocket rocket)
         {
             if (rocket?.physics == null) return false;
-            
+
             var physicsType = rocket.physics.GetType();
             var inOrbitMethod = physicsType.GetMethod("InOrbit", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (inOrbitMethod != null)
                 return (bool)inOrbitMethod.Invoke(rocket.physics, null);
-            
+
             return false;
         }
 
-        private static string SanitizeFileName(string fileName)
+        internal static string SanitizeFileName(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) return "UnnamedRocket";
             
@@ -335,7 +224,7 @@ namespace replay
             return fileName;
         }
 
-        private static string GenerateRocketHash(Rocket rocket)
+        internal static string GenerateRocketHash(Rocket rocket)
         {
             if (rocket == null) return "null_rocket";
             
@@ -589,32 +478,5 @@ namespace replay
         public int PlanetCount { get; set; }
         public int TotalRockets { get; set; }
     }
-    public class QuickSaveData
-    {
-        public DateTime Timestamp { get; set; }
-        public double WorldTime { get; set; }
-        public int TimewarpIndex { get; set; }
-        public string MapMode { get; set; }
-        public double ViewPositionX { get; set; }
-        public double ViewPositionY { get; set; }
-        public double ViewDistance { get; set; }
-        public string PlayerAddress { get; set; }
-        public float CameraDistance { get; set; }
-    }
 
-    public class RocketSaveData
-    {
-        public RocketSave RocketSave { get; set; }
-        public string RocketId { get; set; }
-        public string PlanetName { get; set; }
-        public bool IsInOrbit { get; set; }
-        public DateTime SaveTimestamp { get; set; }
-    }
-
-    public class QuickSave
-    {
-        public QuickSaveData WorldState { get; set; }
-        public int RocketCount { get; set; }
-        public List<string> RocketFiles { get; set; }
-    }
 }
