@@ -45,26 +45,28 @@ namespace replay
 
     // all stuff it should capture
     // the solar system
-    //      Get the name of the solar system 
+    //      Get the solar system 
     // it could be better to copy the solar system file but this is a lot of storage and the user may not want to do this
     // store all rockets into diffrent blueprint files
     // store all rockets no matter what time they were made so that we can save changes to reduce storage size, if they existed store them
 
-    // store the planet name
+    // store the planet
     //      have all rockets of that planet
     // maybe also show any docked rockets as seperate rockets in the heiarchy
 
 
     // recording just means save a file of the rockket in its basic state
     // then the states of every part in the rocket at a time
-
-
     public static class RecordGame
     {
 
         public static RecordingState CurrentRecordingState { get; private set; } = new RecordingState();
         internal static FolderPath _CurrentRecordingFolder;
         private static FolderPath _RootRecordingFolder = Settings.RecordingsFolderPath;
+          // Change tracking fields
+        private static float _changeTrackingInterval = 0.3f; // Track changes every second
+        private static float _lastChangeTrackTime = 0f;
+        internal static Dictionary<string, string> _lastRocketHashes = new Dictionary<string, string>();
 
         // todo: refactor this to be structured and easier to read
         public static void StartRecording()
@@ -134,9 +136,22 @@ namespace replay
                         Debug.LogWarning($"Skipped rocket with null location or planet: {rocket?.rocketName ?? "Unnamed"}");
                     }
                 }
+                CreateQuickSave();                // Initialize change tracking
+                _lastChangeTrackTime = Time.time;
+                _lastRocketHashes.Clear();
+                
+                // Initialize hashes for all current rockets
+                foreach (Rocket rocket in rockets)
+                {
+                    if (rocket != null)
+                    {
+                        string hash = GenerateRocketHash(rocket);
+                        _lastRocketHashes[rocket.GetInstanceID().ToString()] = hash;
+                    }
+                }
 
-                CreateQuickSave();
-
+                // Create update handler to ensure continuous tracking
+                EnsureUpdateHandlerExists();
                 Debug.Log("Recording started successfully");
                 Debug.Log(rocketRegistry.ReturnAsPrint());
             }
@@ -187,14 +202,21 @@ namespace replay
                 Debug.LogError($"Error saving recording data: {ex.Message}");
             }
             finally
-            {
-                // Always resume world and clear state even if saving failed
+            {                // Always resume world and clear state even if saving failed
                 FreezeOrResumeTime(false);
+
+                // Clean up update handler
+                GameObject updateHandler = GameObject.Find("RecordingUpdateHandler");
+                if (updateHandler != null)
+                {
+                    UnityEngine.Object.Destroy(updateHandler);
+                }
 
                 // Clear recording state
                 CurrentRecordingState = new RecordingState();
                 rocketRegistry.PlanetRocketMapping.Clear();
                 _CurrentRecordingFolder = null;
+                _lastRocketHashes.Clear();
 
                 Debug.Log("Recording state cleared");
             }
@@ -316,6 +338,64 @@ namespace replay
 
         public static void UpdateRecordingState(RecordingState newState) =>
             CurrentRecordingState = newState;
+
+        // Ensures the update handler is always present while recording
+        private static void EnsureUpdateHandlerExists()
+        {
+            GameObject updateHandler = GameObject.Find("RecordingUpdateHandler");
+            if (updateHandler == null)
+            {
+                updateHandler = new GameObject("RecordingUpdateHandler");
+                updateHandler.AddComponent<RecordingUpdateHandler>();
+                UnityEngine.Object.DontDestroyOnLoad(updateHandler);
+            }
+        }
+
+        // Update method that should be called from the main game loop or mod update
+        public static void Update()
+        {
+            // Ensure update handler is always present while recording
+            if (CurrentRecordingState.IsRecording)
+            {
+                EnsureUpdateHandlerExists();
+            }
+            // Check if we should track changes
+            if (CurrentRecordingState.IsRecording && 
+                Time.time - _lastChangeTrackTime >= _changeTrackingInterval)
+            {
+                _lastChangeTrackTime = Time.time;
+                
+                // Get current rockets and track changes
+                Rocket[] currentRockets = GameManager.main?.rockets?.ToArray();
+                if (currentRockets != null)
+                {
+                    SaveManager.SetChange(currentRockets);
+                }
+            }
+        }
+        // Method to be called by Harmony patch or mod framework
+        public static void OnUpdate()
+        {
+            Update();
+        }
+    }
+
+    // Unity MonoBehaviour to handle update calls
+    public class RecordingUpdateHandler : MonoBehaviour
+    {
+        private void Update()
+        {
+            RecordGame.OnUpdate();
+        }
+        
+        private void OnDestroy()
+        {
+            // Clean up when component is destroyed
+            if (RecordGame.CurrentRecordingState.IsRecording)
+            {
+                RecordGame.StopRecording();
+            }
+        }
     }
 }
 

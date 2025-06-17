@@ -141,7 +141,34 @@ namespace replay
             finally
             {
                 FreezeOrResumeTime(false);
+
             }
+        }
+
+
+        private static int i = 0;
+        internal static void SetChange(Rocket[] rockets)
+        {   // takes in rockets and and will create a delta for change so unchanged rockets are skiped
+            // create a changes file for the rocket and store the changes, 
+            // Some stuff to not check for is:
+            // - Rocket name changes
+
+            // Factors to concider:
+            // rockets merging
+            // rockets splitting
+            // rockets being deleted/destroyed
+            // rockets being created 
+            // if its created add to blueprints folder
+            // includes all basics like position, velocity, rotation, etc.
+
+            if (!CurrentRecordingState.IsRecording)
+            {
+                Debug.LogWarning("Cannot set changes: No active recording session");
+                return;
+            }
+            // check if the rocket exists in the blueprints folder
+
+            Debug.Log("Setting changes for rockets... " + i++);
         }
     }
 

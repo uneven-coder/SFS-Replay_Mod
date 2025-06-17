@@ -75,6 +75,7 @@
     <Compile Include="MainMenuPatch.cs" />
     <Compile Include="RecordGame.cs" />
     <Compile Include="SaveManager.cs" />
+    <Compile Include="GameManagerRecordingPatch.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

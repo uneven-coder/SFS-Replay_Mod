@@ -12,39 +12,41 @@ using static replay.RecordGame;
 
 namespace replay
 {
-
-
     public static class GameUiPatch
     {
-
-        private static void ShowRecordingEndMenu()
+        public static void ShowRecordingEndMenu(Action onExitAction = null)
         {
-            StopRecording();
-            CurrentRecordingState.IsRecording = false;
-            CurrentRecordingState.EndTime = DateTime.Now;
+            // Capture recording state before stopping to preserve data
+            var recordingData = new RecordingState
+            {
+                SessionId = CurrentRecordingState.SessionId,
+                RecordingName = CurrentRecordingState.RecordingName,
+                StartTime = CurrentRecordingState.StartTime,
+                EndTime = DateTime.Now,
+                SolarSystem = CurrentRecordingState.SolarSystem,
+                IsRecording = false
+            };
 
-            TimeSpan duration = CurrentRecordingState.EndTime - CurrentRecordingState.StartTime;
+            // Stop recording but preserve the data for display
+            StopRecording();
+            
+            TimeSpan duration = recordingData.EndTime - recordingData.StartTime;
 
             List<MenuElement> endMenuElements = new List<MenuElement>();
 
             // Title
             endMenuElements.Add(TextBuilder.CreateText(() => "Recording Complete"));
-            endMenuElements.Add(ElementGenerator.VerticalSpace(12));
-
-
-            {   // Recording info display
-                // endMenuElements.Add(TextBuilder.CreateText(() => $"Name: {CurrentRecordingState.RecordingName}"));
-                endMenuElements.Add(ButtonBuilder.CreateButton(null, () => CurrentRecordingState.RecordingName, () =>
+            endMenuElements.Add(ElementGenerator.VerticalSpace(12));            {   // Recording info display
+                // endMenuElements.Add(TextBuilder.CreateText(() => $"Name: {recordingData.RecordingName}"));
+                endMenuElements.Add(ButtonBuilder.CreateButton(null, () => recordingData.RecordingName, () =>
                 {
-                    string selectedName = CurrentRecordingState.RecordingName;
+                    string selectedName = recordingData.RecordingName;
                     Menu.textInput.Open(Loc.main.Cancel, Loc.main.Rename, delegate (string[] input)
                     {
-                        CurrentRecordingState.RecordingName = input[0];
-                        Debug.Log($"Recording renamed to: {input[0]}");
-
-                        // Refresh the menu to show the updated name
+                        recordingData.RecordingName = input[0];
+                        Debug.Log($"Recording renamed to: {input[0]}");                        // Refresh the menu to show the updated name
                         ScreenManager.main.CloseCurrent();
-                        ShowRecordingEndMenu();
+                        ShowRecordingEndMenu(onExitAction);
 
                     }, CloseMode.Current, new TextInputElement[]
                     {
@@ -52,8 +54,8 @@ namespace replay
                     });
                 }, CloseMode.None));
                 endMenuElements.Add(TextBuilder.CreateText(() => $"Duration: {duration:hh\\:mm\\:ss}"));
-                endMenuElements.Add(TextBuilder.CreateText(() => $"Started: {CurrentRecordingState.StartTime:HH:mm:ss}"));
-                endMenuElements.Add(TextBuilder.CreateText(() => $"Ended: {CurrentRecordingState.EndTime:HH:mm:ss}"));
+                endMenuElements.Add(TextBuilder.CreateText(() => $"Started: {recordingData.StartTime:HH:mm:ss}"));
+                endMenuElements.Add(TextBuilder.CreateText(() => $"Ended: {recordingData.EndTime:HH:mm:ss}"));
                 endMenuElements.Add(ElementGenerator.VerticalSpace(10));
             }
 
@@ -62,21 +64,26 @@ namespace replay
             endMenuElements.Add(ElementGenerator.VerticalSpace(30));            // Save button
             endMenuElements.Add(ButtonBuilder.CreateButton(null, () => "Save Recording", () =>
             {
-                CurrentRecordingState.RecordingName = CurrentRecordingState.RecordingName;
-                Debug.Log($"Recording saved: {CurrentRecordingState.RecordingName}");
+                // Update the current recording state with the potentially renamed data
+                UpdateRecordingState(recordingData);
+                Debug.Log($"Recording saved: {recordingData.RecordingName}");
                 Debug.Log($"Duration: {duration:hh\\:mm\\:ss}");
                 SaveRecording();
-                    UpdateRecordingState(new RecordingState());
+                UpdateRecordingState(new RecordingState());
+
+                // Execute the exit action after saving
+                onExitAction?.Invoke();
             }, CloseMode.Current));
-
-
-            {   // Other options
+            {   // Other options                
                 endMenuElements.Add(ButtonBuilder.CreateButton(null, () => "Discard Recording", () =>
-                {
-                    Debug.Log("Recording discarded");
-                    // Reset recording state without saving
-                    UpdateRecordingState(new RecordingState());
-                }, CloseMode.Current));
+                    {
+                        Debug.Log("Recording discarded");
+                        // Reset recording state without saving
+                        UpdateRecordingState(new RecordingState());
+
+                        // Execute the exit action after discarding
+                        onExitAction?.Invoke();
+                    }, CloseMode.Current));
             }
 
             MenuGenerator.OpenMenu(CancelButton.Close, CloseMode.Current, endMenuElements.ToArray());
@@ -105,13 +112,10 @@ namespace replay
                 
                 RecordGame.StartRecording();
 
-            }
-            else
+            }            else
             {
-                CurrentRecordingState.IsRecording = false;
-                CurrentRecordingState.EndTime = DateTime.Now;
+                // Show recording end menu with proper data preservation
                 ShowRecordingEndMenu();
-                RecordGame.StopRecording();
             }
         }
 
