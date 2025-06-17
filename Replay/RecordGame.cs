@@ -13,10 +13,34 @@ using System;
 using static replay.Main;
 using SFS;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
+using SFS.Navigation;
+using SFS.UI;
+using SFS.World.Maps;
 
 namespace replay
-{
-
+{    // Custom contract resolver to exclude derived properties
+    public class IgnoreDerivedPropertiesContractResolver : DefaultContractResolver
+    {
+        protected override JsonProperty CreateProperty(MemberInfo member, MemberSerialization memberSerialization)
+        {
+            JsonProperty property = base.CreateProperty(member, memberSerialization);
+            
+            // Exclude derived vector properties that can be calculated from x and y
+            if (property.PropertyName == "ToVector2" || 
+                property.PropertyName == "ToVector3" ||
+                property.PropertyName == "normalized" ||
+                property.PropertyName == "magnitude" ||
+                property.PropertyName == "sqrMagnitude" ||
+                property.PropertyName == "AngleRadians" ||
+                property.PropertyName == "AngleDegrees")
+            {
+                property.ShouldSerialize = instance => false;
+            }
+            
+            return property;
+        }
+    }
 
     // all stuff it should capture
     // the solar system
@@ -39,25 +63,33 @@ namespace replay
 
         public static RecordingState CurrentRecordingState { get; private set; } = new RecordingState();
         private static FolderPath _CurrentRecordingFolder;
+        private static FolderPath _RootRecordingFolder = Settings.RecordingsFolderPath;
 
         // todo: refactor this to be structured and easier to read
         public static void StartRecording()
         {
             try
             {
-                // Validate essential objects before proceeding
-                string NullRefError =
-                    Base.worldBase?.settings?.solarSystem == null ? "Cannot start recording: worldBase, settings, or solarSystem is null" :
-                    Base.worldBase.settings.solarSystem.name == null || Base.worldBase.settings.solarSystem.name == string.Empty ? "Cannot start recording: worldBase, settings, or solarSystem is null" :
-                    Base.planetLoader?.planets == null ?            "Cannot start recording: planetLoader or planets is null" :
-                    GameManager.main?.rockets == null ?             "Cannot start recording: GameManager.main or rockets is null" :
-                    null;
-                    
-                if (NullRefError != null) {
-                    Debug.LogError(NullRefError);
+                if (Base.worldBase?.settings?.solarSystem == null)
+                {
+                    Debug.LogError("Cannot start recording: worldBase, settings, or solarSystem is null");
                     return;
                 }
 
+                if (Base.planetLoader?.planets == null)
+                {
+                    Debug.LogError("Cannot start recording: planetLoader or planets is null");
+                    return;
+                }
+
+                if (GameManager.main?.rockets == null)
+                {
+                    Debug.LogError("Cannot start recording: GameManager.main or rockets is null");
+                    return;
+                }
+
+                Debug.Log($"Starting recording for solar system: {Base.worldBase.settings.solarSystem.name}");
+                
                 // Initialize planet rocket mapping
                 rocketRegistry.PlanetRocketMapping.Clear();
                 foreach (Planet planet in Base.planetLoader.planets.Values)
@@ -77,8 +109,8 @@ namespace replay
                 CurrentRecordingState.SessionId = Guid.NewGuid().ToString();
                 CurrentRecordingState.RecordingName = $"Recording_{DateTime.Now:yyyyMMdd_HHmmss}";
 
-                // // Create recording folder structure
-                _CurrentRecordingFolder = Settings.RecordingsFolderPath.Extend(CurrentRecordingState.RecordingName);
+                // Always create folder directly at root using absolute path to ensure no nesting
+                _CurrentRecordingFolder = new FolderPath(Path.Combine(Settings.RecordingsFolderPath, CurrentRecordingState.RecordingName));
                 Debug.Log($"Creating recording folders at: {_CurrentRecordingFolder}");
                 Directory.CreateDirectory(_CurrentRecordingFolder);
                 Directory.CreateDirectory(Path.Combine(_CurrentRecordingFolder, "Blueprints"));
@@ -102,6 +134,8 @@ namespace replay
                     }
                 }
 
+                CreateQuickSave();
+
                 Debug.Log("Recording started successfully");
                 Debug.Log(rocketRegistry.ReturnAsPrint());
             }
@@ -114,9 +148,7 @@ namespace replay
             {
                 FreezeOrResumeTime(false);
             }
-        }
-
-        private static void FreezeOrResumeTime(bool FreezeTime)
+        }        private static void FreezeOrResumeTime(bool FreezeTime)
         {   // realtime physics should be true so stuff like engines arnt turned off
             // this is used to freeze the world so that we can save all data without it changing
             var worldTime = UnityEngine.Object.FindObjectOfType<WorldTime>();
@@ -163,16 +195,194 @@ namespace replay
 
                 Debug.Log("Recording state cleared");
             }
-        }
-        public static void CreateQuickSave()
+        }        public static void CreateQuickSave()
         {   // calling it quick save as its simular to sfs quicksave
             // it will save all rockets as blueprints/the quick save format except better formated
             // its more custom but works the same and donsnt really save much of the world
-            // error-leave this so i know to work on this later
-            throw new System.NotImplementedException("CreateQuickSave is not implemented yet.");
+
+
+            if (!CurrentRecordingState.IsRecording)
+            {
+                Debug.LogWarning("Cannot create quick save: No active recording session");
+                return;
+            }
+
+            try
+            {
+                // Pause world to safely capture state
+                FreezeOrResumeTime(true);
+
+                // Always use absolute path for current recording folder
+                _CurrentRecordingFolder = new FolderPath(Path.Combine(Settings.RecordingsFolderPath, CurrentRecordingState.RecordingName));
+                
+                // Ensure blueprints folder exists
+                string blueprintsFolder = Path.Combine(_CurrentRecordingFolder, "Blueprints");
+                if (!Directory.Exists(blueprintsFolder))
+                {
+                    Directory.CreateDirectory(blueprintsFolder);
+                }// Get current world state data
+                var worldState = new QuickSaveData
+                {
+                    Timestamp = DateTime.Now,
+                    WorldTime = WorldTime.main.worldTime,
+                    TimewarpIndex = WorldTime.main.timewarpIndex,
+                    PlayerAddress = PlayerController.main.player.Value?.location?.planet?.Value?.codeName ?? "Unknown"
+                };                // Save all rockets as individual blueprint files with unique hash-based naming
+                Rocket[] rockets = GameManager.main.rockets.ToArray();
+                var rocketSaves = new List<RocketSaveData>();
+                var savedRocketHashes = new HashSet<string>();
+
+                foreach (Rocket rocket in rockets)
+                {
+                    if (rocket == null) continue;
+
+                    // Create unique identifier for this rocket based on actual rocket data
+                    string rocketHash = GenerateRocketHash(rocket);
+
+                    // Skip if we've already saved this exact rocket state
+                    if (savedRocketHashes.Contains(rocketHash))
+                    {
+                        Debug.LogWarning($"Skipping duplicate rocket with hash: {rocketHash}");
+                        continue;
+                    }
+                    savedRocketHashes.Add(rocketHash);
+
+                    // Create rocket save data using SFS's RocketSave structure
+                    var rocketSave = new RocketSave(rocket);
+
+                    // Create our custom rocket save data with additional metadata
+                    var rocketSaveData = new RocketSaveData
+                    {
+                        RocketSave = rocketSave,
+                        RocketId = rocketHash,
+                        PlanetName = rocket.location?.planet?.Value?.codeName ?? "Unknown",
+                        IsInOrbit = IsRocketInOrbit(rocket),
+                        SaveTimestamp = DateTime.Now
+                    };
+
+                    rocketSaves.Add(rocketSaveData);
+
+                    // Save individual rocket blueprint file with hash-based name
+                    string rocketName = !string.IsNullOrEmpty(rocketSave.rocketName) ? rocketSave.rocketName : "UnnamedRocket";
+                    string rocketFileName = $"{SanitizeFileName(rocketName)}_{rocketHash}.json";
+                    string rocketFilePath = Path.Combine(blueprintsFolder, rocketFileName);                    // Configure JSON settings to handle circular references and exclude derived properties
+                    var jsonSettings = new JsonSerializerSettings
+                    {
+                        ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                        NullValueHandling = NullValueHandling.Ignore,
+                        Formatting = Formatting.Indented,
+                        DefaultValueHandling = DefaultValueHandling.Ignore,
+                        ContractResolver = new IgnoreDerivedPropertiesContractResolver()
+                    };
+
+                    File.WriteAllText(rocketFilePath, JsonConvert.SerializeObject(rocketSaveData, jsonSettings));
+                }
+
+                // Save master quick save file with world state and rocket references
+                var quickSave = new QuickSave
+                {
+                    WorldState = worldState,
+                    RocketCount = rocketSaves.Count,
+                    RocketFiles = rocketSaves.Select(r =>
+                    {
+                        string rocketName = !string.IsNullOrEmpty(r.RocketSave.rocketName) ? r.RocketSave.rocketName : "UnnamedRocket";
+                        return $"{SanitizeFileName(rocketName)}_{r.RocketId}.json";
+                    }).ToList()
+                }; string quickSaveFilePath = Path.Combine(_CurrentRecordingFolder, $"quicksave_{DateTime.Now:yyyyMMdd_HHmmss}.json");
+
+                // Configure JSON settings for master save file
+                var masterJsonSettings = new JsonSerializerSettings
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                    NullValueHandling = NullValueHandling.Ignore,
+                    Formatting = Formatting.Indented
+                };
+
+                File.WriteAllText(quickSaveFilePath, JsonConvert.SerializeObject(quickSave, masterJsonSettings));
+
+                Debug.Log($"Quick save created successfully with {rocketSaves.Count} rockets");
+                Debug.Log($"Quick save file: {quickSaveFilePath}");
+                Debug.Log($"Rocket blueprints saved to: {blueprintsFolder}");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Failed to create quick save: {ex.Message}\nStackTrace: {ex.StackTrace}");
+            }
+            finally
+            {
+                FreezeOrResumeTime(false);
+            }
+        }        private static bool IsRocketInOrbit(Rocket rocket)
+        {
+            if (rocket?.physics == null) return false;
+            
+            var physicsType = rocket.physics.GetType();
+            var inOrbitMethod = physicsType.GetMethod("InOrbit", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (inOrbitMethod != null)
+                return (bool)inOrbitMethod.Invoke(rocket.physics, null);
+            
+            return false;
         }
 
-        public static void SaveRecording()
+        private static string SanitizeFileName(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return "UnnamedRocket";
+            
+            foreach (char c in Path.GetInvalidFileNameChars())
+            {
+                fileName = fileName.Replace(c, '_');
+            }
+            return fileName;
+        }
+
+        private static string GenerateRocketHash(Rocket rocket)
+        {
+            if (rocket == null) return "null_rocket";
+            
+            // Create a hash based on rocket properties that define its unique state
+            var hashData = new System.Text.StringBuilder();
+            
+            // Add basic rocket properties
+            hashData.Append(rocket.rocketName ?? "unnamed");
+            hashData.Append(rocket.location?.planet?.Value?.codeName ?? "unknown_planet");
+            
+            // Use the correct property access based on the JSON structure
+            if (rocket.location?.position.Value != null)
+            {
+                var pos = rocket.location.position;
+                hashData.Append(pos.Value.magnitude.ToString("F6"));
+                hashData.Append(pos.Value.AngleRadians.ToString("F6"));
+            }
+            
+            if (rocket.location?.velocity?.Value != null)
+            {
+                var vel = rocket.location.velocity;
+                hashData.Append(vel.Value.magnitude.ToString("F6"));
+                hashData.Append(vel.Value.AngleRadians.ToString("F6"));
+            }
+            
+            // Add parts information for uniqueness
+            if (rocket.partHolder?.parts != null)
+            {
+                hashData.Append(rocket.partHolder.parts.Count.ToString());
+                foreach (var part in rocket.partHolder.parts)
+                {
+                    if (part != null)
+                    {
+                        hashData.Append(part.name);
+                        hashData.Append(part.Position.x.ToString("F3"));
+                        hashData.Append(part.Position.y.ToString("F3"));
+                    }
+                }
+            }
+            
+            // Generate hash from the combined data
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            {
+                byte[] hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashData.ToString()));
+                return Convert.ToBase64String(hashBytes).Replace("/", "_").Replace("+", "-").Substring(0, 16);
+            }
+        }        public static void SaveRecording()
         {
             if (!CurrentRecordingState.IsRecording)
             {
@@ -182,8 +392,8 @@ namespace replay
 
             try
             {
-                // Ensure recording folder exists
-                _CurrentRecordingFolder = Settings.RecordingsFolderPath.Extend(CurrentRecordingState.RecordingName);
+                // Ensure recording folder exists - always use absolute path
+                _CurrentRecordingFolder = new FolderPath(Path.Combine(Settings.RecordingsFolderPath, CurrentRecordingState.RecordingName));
                 if (!Directory.Exists(_CurrentRecordingFolder))
                 {
                     Directory.CreateDirectory(_CurrentRecordingFolder);
@@ -206,10 +416,6 @@ namespace replay
                 string metadataPath = Path.Combine(_CurrentRecordingFolder, "recording_info.json");
                 File.WriteAllText(metadataPath, JsonConvert.SerializeObject(recordingInfo, Formatting.Indented));
 
-                // // Save planet-rocket hierarchy
-                // string hierarchyPath = Path.Combine(_CurrentRecordingFolder, "hierarchy.txt");
-                // File.WriteAllText(hierarchyPath, rocketRegistry.ReturnAsPrint());
-
                 Debug.Log($"Recording saved successfully to: {_CurrentRecordingFolder}");
                 Debug.Log($"Metadata saved: {metadataPath}");
             }
@@ -221,7 +427,6 @@ namespace replay
 
         public static void UpdateRecordingState(RecordingState newState) =>
             CurrentRecordingState = newState;
-
     }
 }
 
@@ -374,7 +579,6 @@ namespace replay
             }
         }
     }
-
     public class RecordingInfo
     {
         public string SessionId { get; set; }
@@ -384,5 +588,33 @@ namespace replay
         public string SolarSystemName { get; set; }
         public int PlanetCount { get; set; }
         public int TotalRockets { get; set; }
+    }
+    public class QuickSaveData
+    {
+        public DateTime Timestamp { get; set; }
+        public double WorldTime { get; set; }
+        public int TimewarpIndex { get; set; }
+        public string MapMode { get; set; }
+        public double ViewPositionX { get; set; }
+        public double ViewPositionY { get; set; }
+        public double ViewDistance { get; set; }
+        public string PlayerAddress { get; set; }
+        public float CameraDistance { get; set; }
+    }
+
+    public class RocketSaveData
+    {
+        public RocketSave RocketSave { get; set; }
+        public string RocketId { get; set; }
+        public string PlanetName { get; set; }
+        public bool IsInOrbit { get; set; }
+        public DateTime SaveTimestamp { get; set; }
+    }
+
+    public class QuickSave
+    {
+        public QuickSaveData WorldState { get; set; }
+        public int RocketCount { get; set; }
+        public List<string> RocketFiles { get; set; }
     }
 }
