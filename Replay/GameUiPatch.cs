@@ -27,28 +27,29 @@ namespace replay
                 IsRecording = false
             };
 
-            // Stop recording but preserve the data for display
             StopRecording();
             
             TimeSpan duration = recordingData.EndTime - recordingData.StartTime;
-
             List<MenuElement> endMenuElements = new List<MenuElement>();
 
             // Title
             endMenuElements.Add(TextBuilder.CreateText(() => "Recording Complete"));
-            endMenuElements.Add(ElementGenerator.VerticalSpace(12));            {   // Recording info display
-                // endMenuElements.Add(TextBuilder.CreateText(() => $"Name: {recordingData.RecordingName}"));
+            endMenuElements.Add(ElementGenerator.VerticalSpace(12));
+
+            {   // Recording info display
                 endMenuElements.Add(ButtonBuilder.CreateButton(null, () => recordingData.RecordingName, () =>
                 {
                     string selectedName = recordingData.RecordingName;
                     Menu.textInput.Open(Loc.main.Cancel, Loc.main.Rename, delegate (string[] input)
                     {
                         recordingData.RecordingName = input[0];
-                        Debug.Log($"Recording renamed to: {input[0]}");                        // Refresh the menu to show the updated name
+                        Debug.Log($"Recording renamed to: {input[0]}");
+                        // Refresh the menu to show the updated name
                         ScreenManager.main.CloseCurrent();
                         ShowRecordingEndMenu(onExitAction);
 
-                    }, CloseMode.Current, new TextInputElement[]
+                    }, CloseMode.Current,
+                    new TextInputElement[]
                     {
                         TextInputMenu.Element(string.Empty, selectedName)
                     });
