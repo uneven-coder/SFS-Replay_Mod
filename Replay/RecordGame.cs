@@ -1,48 +1,19 @@
-using HarmonyLib;
-using ModLoader;
 using UnityEngine;
 using System.IO;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
 using SFS.IO;
-using SFS.Parts;
 using SFS.World;
 using SFS.WorldBase;
 using System;
-using static replay.Main;
 using SFS;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
-using SFS.Navigation;
-using SFS.UI;
-using SFS.World.Maps;
 using static replay.SaveManager;
+using static replay.Main;
 
 namespace replay
-{    // Custom contract resolver to exclude derived properties
-    public class IgnoreDerivedPropertiesContractResolver : DefaultContractResolver
-    {
-        protected override JsonProperty CreateProperty(MemberInfo member, MemberSerialization memberSerialization)
-        {
-            JsonProperty property = base.CreateProperty(member, memberSerialization);
-            
-            // Exclude derived vector properties that can be calculated from x and y
-            if (property.PropertyName == "ToVector2" || 
-                property.PropertyName == "ToVector3" ||
-                property.PropertyName == "normalized" ||
-                property.PropertyName == "magnitude" ||
-                property.PropertyName == "sqrMagnitude" ||
-                property.PropertyName == "AngleRadians" ||
-                property.PropertyName == "AngleDegrees")
-            {
-                property.ShouldSerialize = instance => false;
-            }
-            
-            return property;
-        }
-    }
-
+{
     // all stuff it should capture
     // the solar system
     //      Get the solar system 
@@ -57,103 +28,91 @@ namespace replay
 
     // recording just means save a file of the rockket in its basic state
     // then the states of every part in the rocket at a time
+
+
     public static class RecordGame
     {
-
         public static RecordingState CurrentRecordingState { get; private set; } = new RecordingState();
         internal static FolderPath _CurrentRecordingFolder;
-        private static FolderPath _RootRecordingFolder = Settings.RecordingsFolderPath;
-          // Change tracking fields
-        private static float _changeTrackingInterval = 0.3f; // Track changes every second
+
+        private static float _changeTrackingInterval = 0.3f;
         private static float _lastChangeTrackTime = 0f;
+
         internal static Dictionary<string, string> _lastRocketHashes = new Dictionary<string, string>();
 
-        // todo: refactor this to be structured and easier to read
+
+
         public static void StartRecording()
         {
             try
             {
-                if (Base.worldBase?.settings?.solarSystem == null)
+                FreezeOrResumeTime(true);
+
                 {
-                    Debug.LogError("Cannot start recording: worldBase, settings, or solarSystem is null");
-                    return;
+                    if (Base.worldBase?.settings?.solarSystem == null)
+                        Util.ReturnLog("Cannot start recording: worldBase, settings, or solarSystem is null");
+
+                    if (Base.planetLoader?.planets == null)
+                        Util.ReturnLog("Cannot start recording: planetLoader or planets is null");
+
+                    if (GameManager.main?.rockets == null)
+                        Util.ReturnLog("Cannot start recording: GameManager.main or rockets is null");
                 }
 
-                if (Base.planetLoader?.planets == null)
-                {
-                    Debug.LogError("Cannot start recording: planetLoader or planets is null");
-                    return;
-                }
-
-                if (GameManager.main?.rockets == null)
-                {
-                    Debug.LogError("Cannot start recording: GameManager.main or rockets is null");
-                    return;
-                }
-
-                Debug.Log($"Starting recording for solar system: {Base.worldBase.settings.solarSystem.name}");
-                
                 // Initialize planet rocket mapping
                 rocketRegistry.PlanetRocketMapping.Clear();
                 foreach (Planet planet in Base.planetLoader.planets.Values)
                 {
                     if (planet != null)
-                    {
                         rocketRegistry.PlanetRocketMapping[planet] = new List<Rocket>();
-                    }
                 }
 
-                // Pause the world to safely capture initial state
-                FreezeOrResumeTime(true);
 
-                CurrentRecordingState.SolarSystem = Base.worldBase.settings.solarSystem;
-                CurrentRecordingState.IsRecording = true;
-                CurrentRecordingState.StartTime = DateTime.Now;
-                CurrentRecordingState.SessionId = Guid.NewGuid().ToString();
-                CurrentRecordingState.RecordingName = $"Recording_{DateTime.Now:yyyyMMdd_HHmmss}";
+                CurrentRecordingState = new RecordingState
+                {
+                    IsRecording = true,
+                    RecordingName = $"Recording_{DateTime.Now:yyyyMMdd_HHmmss}",
+                    SessionId = Guid.NewGuid().ToString(),
+                    StartTime = DateTime.Now,
+                    SolarSystem = Base.worldBase.settings.solarSystem
+                };
 
-                // Always create folder directly at root using absolute path to ensure no nesting
-                _CurrentRecordingFolder = new FolderPath(Path.Combine(Settings.RecordingsFolderPath, CurrentRecordingState.RecordingName));
-                Debug.Log($"Creating recording folders at: {_CurrentRecordingFolder}");
-                Directory.CreateDirectory(_CurrentRecordingFolder);
-                Directory.CreateDirectory(Path.Combine(_CurrentRecordingFolder, "Blueprints"));
-                Directory.CreateDirectory(Path.Combine(_CurrentRecordingFolder, "Changes"));
+                {   // create a temp path using the base recordings folder so it dosent cause issues like replacing the base recording folder
+                    // then make the sub folders for the recording
+                    _CurrentRecordingFolder = new FolderPath(Path.Combine(Settings.RecordingsFolderPath, CurrentRecordingState.RecordingName));
+                    Debug.Log($"Creating recording folders at: {_CurrentRecordingFolder}");
+                    Directory.CreateDirectory(_CurrentRecordingFolder);
+                    Directory.CreateDirectory(Path.Combine(_CurrentRecordingFolder, "Blueprints"));
+                    Directory.CreateDirectory(Path.Combine(_CurrentRecordingFolder, "Changes"));
+                }
 
                 // Record existing rockets
                 Rocket[] rockets = GameManager.main.rockets.ToArray();
-                Debug.Log($"Found {rockets.Length} rockets at recording start");
-
-                foreach (Rocket rocket in rockets)
-                {
+                foreach (Rocket rocket in rockets) {
                     if (rocket?.location?.planet?.Value != null)
-                    {
-                        Planet planet = rocket.location.planet.Value;
-                        rocketRegistry.AddRocketToPlanet(planet, rocket);
-                        Debug.Log($"Added rocket '{rocket.rocketName ?? "Unnamed"}' to planet '{planet.DisplayName ?? planet.codeName ?? "Unknown"}'");
-                    }
+                        rocketRegistry.AddRocketToPlanet(rocket.location.planet.Value, rocket);
+                        // Debug.Log($"Added rocket '{rocket.rocketName ?? "Unnamed"}' to planet '{planet.DisplayName ?? planet.codeName ?? "Unknown"}'");
                     else
-                    {
                         Debug.LogWarning($"Skipped rocket with null location or planet: {rocket?.rocketName ?? "Unnamed"}");
-                    }
                 }
-                CreateQuickSave();                // Initialize change tracking
+
+                // this is the end of the prepare env for recording
+                // Create quick save to capture initial state
+                CreateQuickSave();
+
+
+                // Initialize change tracking
                 _lastChangeTrackTime = Time.time;
                 _lastRocketHashes.Clear();
                 
-                // Initialize hashes for all current rockets
-                foreach (Rocket rocket in rockets)
-                {
-                    if (rocket != null)
-                    {
-                        string hash = GenerateRocketHash(rocket);
-                        _lastRocketHashes[rocket.GetInstanceID().ToString()] = hash;
-                    }
-                }
-
-                // Create update handler to ensure continuous tracking
+                // Create update handler to continusly track
                 EnsureUpdateHandlerExists();
-                Debug.Log("Recording started successfully");
-                Debug.Log(rocketRegistry.ReturnAsPrint());
+                
+                Util.Log("Recording started successfully");
+
+                // this will print a file tree structure of the rockets and planets
+                // todo: can be removed but helps with debugging also want to use it for ui later
+                Debug.Log(rocketRegistry.ReturnAsPrint()); 
             }
             catch (System.Exception ex)
             {
@@ -161,10 +120,19 @@ namespace replay
                 CurrentRecordingState.IsRecording = false;
             }
             finally
-            {
-                FreezeOrResumeTime(false);
-            }
+            { FreezeOrResumeTime(false); }
         }
+
+
+
+
+
+
+
+
+
+
+
 
         public static void FreezeOrResumeTime(bool FreezeTime)
         {   // realtime physics should be true so stuff like engines arnt turned off
@@ -238,7 +206,7 @@ namespace replay
         internal static string SanitizeFileName(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) return "UnnamedRocket";
-            
+
             foreach (char c in Path.GetInvalidFileNameChars())
             {
                 fileName = fileName.Replace(c, '_');
@@ -249,14 +217,14 @@ namespace replay
         internal static string GenerateRocketHash(Rocket rocket)
         {
             if (rocket == null) return "null_rocket";
-            
+
             // Create a hash based on rocket properties that define its unique state
             var hashData = new System.Text.StringBuilder();
-            
+
             // Add basic rocket properties
             hashData.Append(rocket.rocketName ?? "unnamed");
             hashData.Append(rocket.location?.planet?.Value?.codeName ?? "unknown_planet");
-            
+
             // Use the correct property access based on the JSON structure
             if (rocket.location?.position.Value != null)
             {
@@ -264,14 +232,14 @@ namespace replay
                 hashData.Append(pos.Value.magnitude.ToString("F6"));
                 hashData.Append(pos.Value.AngleRadians.ToString("F6"));
             }
-            
+
             if (rocket.location?.velocity?.Value != null)
             {
                 var vel = rocket.location.velocity;
                 hashData.Append(vel.Value.magnitude.ToString("F6"));
                 hashData.Append(vel.Value.AngleRadians.ToString("F6"));
             }
-            
+
             // Add parts information for uniqueness
             if (rocket.partHolder?.parts != null)
             {
@@ -286,14 +254,15 @@ namespace replay
                     }
                 }
             }
-            
+
             // Generate hash from the combined data
             using (var sha256 = System.Security.Cryptography.SHA256.Create())
             {
                 byte[] hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashData.ToString()));
                 return Convert.ToBase64String(hashBytes).Replace("/", "_").Replace("+", "-").Substring(0, 16);
             }
-        }        public static void SaveRecording()
+        }
+        public static void SaveRecording()
         {
             if (!CurrentRecordingState.IsRecording)
             {
@@ -360,11 +329,11 @@ namespace replay
                 EnsureUpdateHandlerExists();
             }
             // Check if we should track changes
-            if (CurrentRecordingState.IsRecording && 
+            if (CurrentRecordingState.IsRecording &&
                 Time.time - _lastChangeTrackTime >= _changeTrackingInterval)
             {
                 _lastChangeTrackTime = Time.time;
-                
+
                 // Get current rockets and track changes
                 Rocket[] currentRockets = GameManager.main?.rockets?.ToArray();
                 if (currentRockets != null)
@@ -387,7 +356,7 @@ namespace replay
         {
             RecordGame.OnUpdate();
         }
-        
+
         private void OnDestroy()
         {
             // Clean up when component is destroyed
@@ -419,9 +388,7 @@ namespace replay
             SessionId = string.Empty;
             StartTime = DateTime.MinValue;
             EndTime = DateTime.MinValue;
-            // RecordedEvents = new List<string>();
             SolarSystem = null;
-            // Don't reset SolarSystemName - it should only be updated when a new world loads
         }
     }
 
