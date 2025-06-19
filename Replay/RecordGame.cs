@@ -326,21 +326,6 @@ namespace replay
                 PlanetRocketMapping[planet].Add(rocket);
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-
         public static string ReturnAsPrint(bool hideEmptyPlanets = false, bool hideEmptyOrbit = true)
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
@@ -453,10 +438,4 @@ namespace replay
         public int PlanetCount { get; set; }
         public int TotalRockets { get; set; }
     }
-
-
-
-
-
-
 }
