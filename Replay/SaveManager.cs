@@ -146,6 +146,8 @@ namespace replay
             // create a changes file for the rocket and store the changes, 
             // Some stuff to not check for is:
             // - Rocket name changes
+            // - maybe the position, if the position is a minor change then the velocity will account for the change
+            //      - Ofc rocket teleportation will be accounted for
 
             // Factors to concider:
             // rockets merging
@@ -161,6 +163,8 @@ namespace replay
                 return;
             }
             // check if the rocket exists in the blueprints folder
+            // if not see if its a newley created rocket
+            //      this is why not to use the hash this scenario use the id
 
             Debug.Log("Setting changes for rockets... " + i++);
         }
