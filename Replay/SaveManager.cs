@@ -64,7 +64,7 @@ namespace replay
                     // why a hash? idk it could be random or a incremental id
                     // but i dont think it matters much i may chnage to a id, the function can be swaped out later
                     // but it can still be used to check if the rocket is already saved or diffrent enough to be saved later in the update changes files
-                    string rocketHash = GenerateRocketHash(rocket);
+                    string rocketHash = Util.GenerateRocketHash(rocket);
                     if (savedRocketHashes.Contains(rocketHash))
                         // Skip if we've already saved this exact rocket state
                         Util.ReturnLog($"Skipping duplicate rocket with hash: {rocketHash}");
@@ -78,7 +78,7 @@ namespace replay
                         RocketSave = rocketSave,
                         RocketId = rocketHash,
                         PlanetName = rocket.location?.planet?.Value?.codeName ?? "Unknown",
-                        IsInOrbit = IsRocketInOrbit(rocket),
+                        IsInOrbit = Util.IsRocketInOrbit(rocket),
                         SaveTimestamp = DateTime.Now
                     };
                     rocketSaves.Add(rocketSaveData);
@@ -89,8 +89,9 @@ namespace replay
                     // may have to change this as to get the rockets we have to get the hash of the starting conditions of the rocket to make sure its the same rocket
                     // so maybe saving a diffrent name would be better so it dosent duplicate and we know what to refrence later
                     string rocketName = !string.IsNullOrEmpty(rocketSave.rocketName) ? rocketSave.rocketName : "UnnamedRocket";
-                    string rocketFileName = $"{SanitizeFileName(rocketName)}_{rocketHash}.json";
+                    string rocketFileName = $"{Util.SanitizeFileName(rocketName)}_{rocketHash}.json";
                     string rocketFilePath = Path.Combine(blueprintsFolder, rocketFileName);
+                    
                     
                     // Configure JSON settings for rocket save files
                     // this is to make sure we dont save the same rocket twice and to make sure we
@@ -114,7 +115,7 @@ namespace replay
                     WorldState = worldState,
                     RocketFiles = rocketSaves.Select(r => {
                         string rocketName = !string.IsNullOrEmpty(r.RocketSave.rocketName) ? r.RocketSave.rocketName : "UnnamedRocket";
-                        return $"{SanitizeFileName(rocketName)}_{r.RocketId}.json";
+                        return $"{Util.SanitizeFileName(rocketName)}_{r.RocketId}.json";
                     }).ToList()
                 };
 

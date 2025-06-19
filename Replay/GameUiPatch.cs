@@ -75,12 +75,19 @@ namespace replay
                 // Execute the exit action after saving
                 onExitAction?.Invoke();
             }, CloseMode.Current));
+
             {   // Other options                
                 endMenuElements.Add(ButtonBuilder.CreateButton(null, () => "Discard Recording", () =>
                     {
                         Debug.Log("Recording discarded");
                         // Reset recording state without saving
                         UpdateRecordingState(new RecordingState());
+
+                        // ==========================================
+                        // ==========================================
+                        // ======= Delete the recording files =======
+                        // ==========================================
+                        // ==========================================
 
                         // Execute the exit action after discarding
                         onExitAction?.Invoke();
