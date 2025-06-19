@@ -9,18 +9,15 @@ using SFS.Input;
 using System;
 using SFS.Parsers.Json;
 using Newtonsoft.Json;
-using ModLoader.Helpers;
-using SFS;
-using SFS.WorldBase;
-using SFS.World;
-using UnityEngine.SceneManagement;
+using Newtonsoft.Json.Serialization;
+using System.Reflection;
 
 namespace replay
 {
     public class Main : Mod
     {
         public static Main Instance { get; private set; }
-        
+
         public override string ModNameID => "replayMod";
         public override string DisplayName => "Replay Mod";
         public override string Author => "Cratior";
@@ -149,7 +146,7 @@ namespace replay
     {
         private static FilePath SettingsFilePath => new FolderPath(Main.Instance.ModFolder).ExtendToFile("replaymod-settings.json");
         public static FolderPath RecordingsFolderPath = SavingFolder.Extend("/Recordings");
-        
+
         public static ReplaySettings CurrentSettings { get; private set; } = new ReplaySettings();
 
         public static void EnsureRecordingsFolderExists()
@@ -188,5 +185,45 @@ namespace replay
     {
         [JsonProperty("hasSeenInfoMenu")]
         public bool HasSeenInfoMenu { get; set; } = false;
+    }
+
+    internal static class Util
+    {
+        public static void ReturnLog(string message)
+        {
+            Debug.Log($"[replay] {message}");
+            return;
+        }
+
+        public static void Log(string message)
+        {
+            Debug.Log($"[Replay] {message}");
+            MsgDrawer.main.Log(message);
+        }
+
+    }
+
+
+    // Custom contract resolver to exclude derived properties
+    internal class IgnoreDerivedPropertiesContractResolver : DefaultContractResolver
+    {
+        protected override JsonProperty CreateProperty(MemberInfo member, MemberSerialization memberSerialization)
+        {
+            JsonProperty property = base.CreateProperty(member, memberSerialization);
+
+            // Exclude derived vector properties that can be calculated from x and y
+            if (property.PropertyName == "ToVector2" ||
+                property.PropertyName == "ToVector3" ||
+                property.PropertyName == "normalized" ||
+                property.PropertyName == "magnitude" ||
+                property.PropertyName == "sqrMagnitude" ||
+                property.PropertyName == "AngleRadians" ||
+                property.PropertyName == "AngleDegrees")
+            {
+                property.ShouldSerialize = instance => false;
+            }
+
+            return property;
+        }
     }
 }
