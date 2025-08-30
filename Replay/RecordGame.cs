@@ -11,6 +11,7 @@ using SFS;
 using Newtonsoft.Json;
 using static replay.SaveManager;
 using static replay.Main;
+using UnityEngine.UI;
 
 namespace replay
 {
@@ -423,7 +424,7 @@ namespace replay
                 var rocket = rockets[i];
                 bool isLastRocket = (i == rockets.Count - 1);
                 string rocketPrefix = isLastRocket ? "└── " : "├── ";
-                string rocketName = !string.IsNullOrEmpty(rocket.rocketName) ? rocket.rocketName : $"Rocket_{rocket.GetHashCode()}";
+                string rocketName = $"{rocket.mapPlayer.Select_DisplayName}_{rocket.GetHashCode()}";
                 sb.AppendLine($"{rocketIndent}{rocketPrefix}{rocketName}");
             }
         }
@@ -432,6 +433,7 @@ namespace replay
     {
         public string SessionId { get; set; }
         public string RecordingName { get; set; }
+        public Image Icon { get; set; }
         public DateTime StartTime { get; set; }
         public DateTime EndTime { get; set; }
         public string SolarSystemName { get; set; }

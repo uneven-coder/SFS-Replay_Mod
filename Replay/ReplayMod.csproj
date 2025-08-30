@@ -72,10 +72,13 @@
     <Compile Include="Main.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="GameUiPatch.cs" />
-    <Compile Include="MainMenuPatch.cs" />
     <Compile Include="RecordGame.cs" />
     <Compile Include="SaveManager.cs" />
-    <Compile Include="GameManagerRecordingPatch.cs" />
+    <Compile Include="UIs\Ui.Base.cs" />
+    <Compile Include="UIs\Ui.LoadReplays.cs" />
+    <Compile Include="UIs\Ui.MainMenu.cs" />
+    <Compile Include="UIs\Ui.World.RecordMenu.cs" />
+    <Folder Include="Settings\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

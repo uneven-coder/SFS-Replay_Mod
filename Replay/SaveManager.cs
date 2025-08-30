@@ -91,8 +91,8 @@ namespace replay
                     string rocketName = !string.IsNullOrEmpty(rocketSave.rocketName) ? rocketSave.rocketName : "UnnamedRocket";
                     string rocketFileName = $"{Util.SanitizeFileName(rocketName)}_{rocketHash}.json";
                     string rocketFilePath = Path.Combine(blueprintsFolder, rocketFileName);
-                    
-                    
+
+
                     // Configure JSON settings for rocket save files
                     // this is to make sure we dont save the same rocket twice and to make sure we
                     // save the rocket in a way that is easy to read and understand
@@ -113,7 +113,8 @@ namespace replay
                 {
                     // RocketCount = rocketSaves.Count,
                     WorldState = worldState,
-                    RocketFiles = rocketSaves.Select(r => {
+                    RocketFiles = rocketSaves.Select(r =>
+                    {
                         string rocketName = !string.IsNullOrEmpty(r.RocketSave.rocketName) ? r.RocketSave.rocketName : "UnnamedRocket";
                         return $"{Util.SanitizeFileName(rocketName)}_{r.RocketId}.json";
                     }).ToList()
@@ -121,7 +122,8 @@ namespace replay
 
 
                 string quickSaveFilePath = Path.Combine(_CurrentRecordingFolder, $"quicksave_{DateTime.Now:yyyyMMdd_HHmmss}.json");
-                var replayJsonSettings = new JsonSerializerSettings {
+                var replayJsonSettings = new JsonSerializerSettings
+                {
                     ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
                     NullValueHandling = NullValueHandling.Ignore,
                     Formatting = Formatting.Indented
@@ -134,9 +136,9 @@ namespace replay
                 Debug.Log($"Quick save file: {quickSaveFilePath}");
             }
             catch (System.Exception ex)
-                { Debug.LogError($"Failed to create quick save: {ex.Message}\nStackTrace: {ex.StackTrace}"); }
+            { Debug.LogError($"Failed to create quick save: {ex.Message}\nStackTrace: {ex.StackTrace}"); }
             finally // Ensure we always resume time after saving even if an error occurs
-                { FreezeOrResumeTime(false); }
+            { FreezeOrResumeTime(false); }
         }
 
 
@@ -198,4 +200,14 @@ namespace replay
         // public int RocketCount { get; set; }
         public List<string> RocketFiles { get; set; }
     }
+
+    public enum RocketStateType
+    {
+        None,
+        Created,
+        Deleted,
+        Merged,
+        Split
+    }
+
 }

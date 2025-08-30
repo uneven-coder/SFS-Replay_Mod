@@ -120,10 +120,13 @@ namespace replay
                 
                 RecordGame.StartRecording();
 
-            }            else
-            {
-                // Show recording end menu with proper data preservation
-                ShowRecordingEndMenu();
+            }
+            else
+            {   // confirm stopping, then open save/discard menu
+                WorldRecordMenuUI.ShowRecordingStoppedConfirm(
+                    null,
+                    null
+                );
             }
         }
 
