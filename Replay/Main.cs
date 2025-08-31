@@ -12,6 +12,9 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using System.Reflection;
 using SFS.World;
+using SFS;
+using ModLoader.Helpers;
+using UnityEngine.SceneManagement;
 
 namespace replay
 {
@@ -36,9 +39,12 @@ namespace replay
         }
 
         public override void Load()
-        {
+        {   // Initialize UI and subscribe to Unity scene load to handle recording transitions
             MainMenuUI.HomeManagerAlert();
             Settings.LoadSettings();
+            
+            // Initialize UI base system by creating instance
+            var worldRecordUI = new WorldRecordMenuUI();
         }
     }
 
@@ -191,6 +197,31 @@ namespace replay
                 byte[] hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashData.ToString()));
                 return Convert.ToBase64String(hashBytes).Replace("/", "_").Replace("+", "-").Substring(0, 16);
             }
+        }
+
+        internal static bool IsRecordingActive()
+        {   // Query recording state via reflection to avoid hard dependency
+            try
+            {
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    var type = asm.GetType("replay.CurrentRecordingState");
+                    if (type == null) continue;
+
+                    var prop = type.GetProperty("IsRecording", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                    if (prop != null && prop.PropertyType == typeof(bool))
+                        return (bool)prop.GetValue(null);
+
+                    var field = type.GetField("IsRecording", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                    if (field != null && field.FieldType == typeof(bool))
+                        return (bool)field.GetValue(null);
+                }
+            }
+            catch (Exception e)
+            {   // Log and fallback
+                Debug.Log($"[Replay] Failed to query recording state: {e.Message}");
+            }
+            return false;
         }
 
     }

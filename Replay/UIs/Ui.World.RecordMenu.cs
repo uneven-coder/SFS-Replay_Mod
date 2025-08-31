@@ -10,28 +10,44 @@ using static SFS.UI.ElementGenerator;
 using static SFS.UI.ButtonBuilder;
 using static SFS.UI.TextBuilder;
 using System.Runtime.CompilerServices;
+using ModLoader.Helpers;
 
 namespace replay
 {
-    public class WorldRecordMenuUI
-    {
-        public static void ShowConfirmUI(string title, string message, System.Action onConfirm, System.Action onCancel = null)
-        {   // Display a confirmation dialog with custom title and message
-            ScreenManager.main.OpenScreen(MenuGenerator.CreateMenu(CancelButton.Close, CloseMode.Current, null, null, new MenuElement[]
-            {
+public class WorldRecordMenuUI : SFSUiBase
+{
+    public WorldRecordMenuUI()
+    {   // Initialize UI and subscribe to scene changes
+        OnSceneChanged += HandleSceneChange;
+    }
+
+    private void HandleSceneChange(Scene scene)
+    {   // Handle recording state when scene changes
+        if (IsRecording())
+        {
+            Debug.Log("Scene changed while recording. Opening end menu to handle save/discard.");
+            Debug.Log("New Scene: " + scene.name);
+            GameUiPatch.ShowRecordingEndMenu(null);
+        }
+    }
+
+        public static void ShowConfirmMenu(string title, string message, System.Action onConfirm, System.Action onCancel = null,
+                                string confirmText = "Confirm", string cancelText = "Cancel")
+    {   // Display a confirmation dialog with custom title, message, and button text
+        ScreenManager.main.OpenScreen(MenuGenerator.CreateMenu(CancelButton.Close, CloseMode.Current, null, null, new MenuElement[]
+        {
                 CreateText(() => title),
                 VerticalSpace(12),
                 CreateText(() => message),
                 VerticalSpace(20),
-                VerticalSpace(8),
-                CreateButton(null, () => "Confirm", () => { ScreenManager.main.CloseCurrent(); onConfirm?.Invoke(); }, CloseMode.None),
-                VerticalSpace(8),
-                CreateButton(null, () => "Cancel", () => { ScreenManager.main.CloseCurrent(); onCancel?.Invoke(); }, CloseMode.None)
-            }));
-        }
+                CreateButton(null, () => confirmText, () => { ScreenManager.main.CloseCurrent(); onConfirm?.Invoke(); }, CloseMode.None),
+                // VerticalSpace(4),
+                CreateButton(null, () => cancelText, () => { ScreenManager.main.CloseCurrent(); onCancel?.Invoke(); }, CloseMode.None)
+        }));
+    }
 
         public static void ShowRecordingStoppedConfirm(System.Action onConfirm, System.Action onCancel = null) =>
-            ShowConfirmUI("Stop Recording", "Are you sure you want to stop the current recording?", 
+            ShowConfirmMenu("Stop Recording", "Are you sure you want to stop the current recording?", 
                          () => GameUiPatch.ShowRecordingEndMenu(onConfirm), onCancel);
 
         
@@ -50,46 +66,50 @@ namespace replay
                     ["ExitToMainMenu"] = (inst, args) => () => inst.ExitToMainMenu()
                 };
 
-            [HarmonyPrefix]
-            public static bool UnifiedGameManagerPrefix(GameManager __instance, MethodBase __originalMethod, object[] __args) =>
-                !methodMap.TryGetValue(__originalMethod.Name, out var factory) || 
-                !RecordingPatchHelpers.CheckRecordingAndConfirm(factory(__instance, __args));
-        }
-
-        // Scene change safety: open save/discard menu if scene changes
-        [HarmonyPatch(typeof(UnityEngine.SceneManagement.SceneManager), "Internal_SceneLoaded")]
-        public static class SceneChangeRecordingPatch
-        {
-            [HarmonyPostfix]
-            public static void OnSceneLoaded()
-            {
-                if (CurrentRecordingState.IsRecording)
+            [HarmonyTargetMethods]
+            static System.Collections.Generic.IEnumerable<System.Reflection.MethodBase> TargetMethods()
+            {   // Target all GameManager methods we want to intercept
+                var gameManagerType = typeof(SFS.World.GameManager);
+                foreach (var methodName in methodMap.Keys)
                 {
-                    Debug.Log("Scene changed while recording. Opening end menu to handle save/discard.");
-                    GameUiPatch.ShowRecordingEndMenu(null);
+                    var method = gameManagerType.GetMethod(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (method != null)
+                        yield return method;
                 }
             }
+
+            [HarmonyPrefix]
+            public static bool UnifiedGameManagerPrefix(GameManager __instance, MethodBase __originalMethod, object[] __args)
+            {   // Intercept GameManager methods and show confirmation if recording
+                if (methodMap.TryGetValue(__originalMethod.Name, out var factory))
+                    return !CheckRecordingAndConfirm(factory(__instance, __args));
+                
+                return true;  // Allow method to proceed if not in our map
+            }
         }
 
-        // Helper nested class for recording state and stop logic
-        private static class RecordingPatchHelpers
-        {   // Centralize recording checks and confirmation UI
-            public static bool CheckRecordingAndConfirm(System.Action onProceed)
-            {   // Show confirmation if recording; block original and run after save/discard
-                if (!IsRecording()) return false;
 
-                ShowConfirmUI(
-                    "Recording in progress",
-                    "You are currently recording. Stop now to save or discard before proceeding?",
-                    () => { GameUiPatch.ShowRecordingEndMenu(onProceed); },
-                    null
-                );
 
-                return true;
-            }
+
+        public static bool CheckRecordingAndConfirm(System.Action onProceed)
+        {   // Show confirmation if recording; block original and run after save/discard
+            if (!IsRecording()) 
+                return false;  // Not recording, allow original method to proceed
+
+            ShowConfirmMenu(
+                "Recording in progress",
+                "You are currently recording. Stop now to save or discard before proceeding?",
+                () => { GameUiPatch.ShowRecordingEndMenu(onProceed); },
+                null,
+                "End Recording and Exit",
+                "Continue Recording"
+            );
+
+            return true;  // Block original method execution
+        }
 
             public static bool IsRecording() =>
                 CurrentRecordingState.IsRecording;  // Query current recording state
-        }
+        
     }
 }
