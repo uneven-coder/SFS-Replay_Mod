@@ -117,8 +117,8 @@ namespace replay
                 {
                     Debug.LogError($"Error closing menu: {ex.Message}");
                 }
-                
-                RecordGame.StartRecording();
+
+                StartRecording();
 
             }
             else
@@ -169,7 +169,7 @@ namespace replay
                 if (isFromGameManager && elements != null)
                 {
                     Debug.Log($"Adding recording button");
-                    var recordButton = ButtonBuilder.CreateButton(null, () => GameUiPatch.GetRecordingButtonText(), () => {
+                    var recordButton = ButtonBuilder.CreateButton(null, () => GetRecordingButtonText(), () => {
                         Debug.Log("Recording button clicked");
                         ToggleRecording();
                     }, CloseMode.None);

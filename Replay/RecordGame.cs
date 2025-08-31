@@ -257,7 +257,7 @@ namespace replay
 
                 Rocket[] currentRockets = GameManager.main?.rockets?.ToArray();
                 if (currentRockets != null)
-                    SaveManager.SetChange(currentRockets);
+                    SetChange(currentRockets);
 
             }
         }

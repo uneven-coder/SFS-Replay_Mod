@@ -42,7 +42,7 @@ namespace replay
             for (int i = 0; i < alertMessages.Length; i++)
                 alertElements[i + 2] = TextBuilder.CreateText(() => alertMessages[i]);
 
-            var menuScreen = MenuGenerator.CreateMenu(CancelButton.Close, SFS.Input.CloseMode.Current, null, null, alertElements);
+            var menuScreen = MenuGenerator.CreateMenu(CancelButton.Close, CloseMode.Current, null, null, alertElements);
             ScreenManager.main.OpenScreen(menuScreen);
 
             // Mark alert as seen and save
@@ -72,7 +72,7 @@ namespace replay
                     var alignmentProperty = tmpComponent.GetType().GetProperty("alignment");
                     if (alignmentProperty?.PropertyType != null)
                     {   // Parse and set MidlineLeft alignment
-                        var midlineLeftValue = System.Enum.Parse(alignmentProperty.PropertyType, "MidlineLeft");
+                        var midlineLeftValue = Enum.Parse(alignmentProperty.PropertyType, "MidlineLeft");
                         alignmentProperty.SetValue(tmpComponent, midlineLeftValue);
                     }
                 }
