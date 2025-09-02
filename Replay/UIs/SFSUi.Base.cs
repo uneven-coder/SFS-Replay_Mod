@@ -2,57 +2,37 @@ using System;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
 using ModLoader.Helpers;
-using UnityEngine;
 
 namespace replay
 {
     public abstract class SFSUiBase
-    {   // Abstract base for all UI classes providing unified event handling and scene management
+    {   // UI base providing scene change notifications
         private static readonly List<SFSUiBase> registeredUIs = new List<SFSUiBase>();
-        private static bool isSceneHandlerInitialized = false;
+        private static bool isInitialized = false;
 
         public event Action<Scene> OnSceneChanged;
-        public event Action OnUIStateChanged;
 
         protected SFSUiBase()
-        {   // Register this UI instance and ensure scene handler is initialized
+        {   // Register instance and initialize scene handler once
             registeredUIs.Add(this);
-            InitializeSceneHandler();
+            
+            if (!isInitialized)
+            {   // Hook scene changes once for all instances
+                SceneHelper.OnSceneLoaded += NotifyAllInstances;
+                isInitialized = true;
+            }
         }
 
-        private static void InitializeSceneHandler()
-        {   // Set up scene change handler once for all UI instances
-            if (isSceneHandlerInitialized) return;
-
-            SceneHelper.OnSceneLoaded += (scene) =>
-            {   // Notify all registered UI instances of scene changes
-                foreach (var ui in registeredUIs)
-                    ui.OnSceneChanged?.Invoke(scene);
-            };
-
-            isSceneHandlerInitialized = true;
-        }
-
-        protected void NotifyStateChanged()
-        {   // Trigger state change event for this UI instance
-            OnUIStateChanged?.Invoke();
-        }
-
-        protected virtual void OnSceneLoad(Scene scene)
-        {   // Override in derived classes to handle scene-specific logic
-            // Default implementation does nothing
-        }
-
-        public static void UnregisterUI(SFSUiBase ui)
-        {   // Remove UI from registration list when no longer needed
-            registeredUIs.Remove(ui);
+        private static void NotifyAllInstances(Scene scene)
+        {   // Efficiently notify all registered UI instances
+            for (int i = registeredUIs.Count - 1; i >= 0; i--)
+                registeredUIs[i].OnSceneChanged?.Invoke(scene);
         }
 
         protected virtual void Dispose()
-        {   // Clean up UI instance and remove from registration
-            UnregisterUI(this);
+        {   // Clean up instance
+            registeredUIs.Remove(this);
             OnSceneChanged = null;
-            OnUIStateChanged = null;
         }
     }
 }
